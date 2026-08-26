@@ -8,6 +8,7 @@ import qs.Ui
 import "XComposeParser.js" as XComposeParser
 import "XComposeSearch.js" as XComposeSearch
 import "XComposeHistory.js" as XComposeHistory
+import "XComposeFavorites.js" as XComposeFavorites
 
 Item {
   id: root
@@ -21,6 +22,7 @@ Item {
   readonly property string pluginDir: manifest && manifest.__sourceDir ? manifest.__sourceDir : home + "/.config/omarchy/plugins/" + pluginId
   readonly property string stateDir: xdgStateHome + "/omarchy"
   readonly property string historyPath: stateDir + "/xcompose-history.json"
+  readonly property string favoritesPath: stateDir + "/xcompose-favorites.json"
 
   property string composePath: ""
   property string composeLoadState: "loading"
@@ -32,6 +34,7 @@ Item {
   property var diagnostics: []
   property var filteredGroups: []
   property var history: XComposeHistory.empty()
+  property var favorites: XComposeFavorites.empty()
   property var variantSelections: ({})
 
   property color background: Color.menu.background
@@ -113,12 +116,21 @@ Item {
     historyFile.setText(JSON.stringify(history, null, 2) + "\n")
   }
 
+  function loadFavorites(raw) {
+    favorites = XComposeFavorites.parse(raw)
+    if (opened) rebuildDisplay()
+  }
+
+  function saveFavorites() {
+    favoritesFile.setText(JSON.stringify(favorites, null, 2) + "\n")
+  }
+
   function warningCount() { return diagnostics.filter(function(item) { return item.severity === "warning" }).length }
   function errorCount() { return diagnostics.filter(function(item) { return item.severity === "error" }).length }
 
   function rebuildDisplay() {
     var selectedGroupId = filteredGroups.length && selectedIndex < filteredGroups.length ? filteredGroups[selectedIndex].groupId : ""
-    var groups = XComposeSearch.search(entries, filterText, history, 100)
+    var groups = XComposeSearch.search(entries, filterText, history, favorites, 100)
     filteredGroups = groups
     displayModel.clear()
     for (var i = 0; i < groups.length; i++) {
@@ -127,7 +139,7 @@ Item {
       var variantIndex = typeof savedIndex === "number" ? Math.max(0, Math.min(savedIndex, group.variants.length - 1)) : group.activeVariantIndex
       var variant = group.variants[variantIndex]
       var match = XComposeSearch.matchEntry(variant, XComposeSearch.normalize(filterText)) || { descriptionRanges: [] }
-      displayModel.append({ groupId: group.groupId, description: variant.descriptionPreview, descriptionMarkup: root.descriptionMarkup(variant.descriptionPreview, match.descriptionRanges), preview: variant.valuePreview, sequence: variant.sequencePreview, variants: group.variants.length, variantIndex: variantIndex })
+      displayModel.append({ groupId: group.groupId, description: variant.descriptionPreview, descriptionMarkup: root.descriptionMarkup(variant.descriptionPreview, match.descriptionRanges), preview: variant.valuePreview, sequence: variant.sequencePreview, variants: group.variants.length, variantIndex: variantIndex, favorite: group.favorite })
     }
     if (!displayModel.count) { selectedIndex = 0; cursorActive = false; return }
     var restored = -1
@@ -161,7 +173,25 @@ Item {
     rebuildDisplay()
   }
 
+  function toggleFavorite(index) {
+    if (index < 0 || index >= displayModel.count) return
+    var group = filteredGroups[index]
+    var variant = group.variants[displayModel.get(index).variantIndex]
+    if (!variant) return
+    favorites = XComposeFavorites.toggle(favorites, variant.id, 100)
+    saveFavorites()
+    rebuildDisplay()
+  }
+
   function activate(index) {
+    useResult(index, false)
+  }
+
+  function copyResult(index) {
+    useResult(index, true)
+  }
+
+  function useResult(index, copyOnly) {
     if (index < 0 || index >= displayModel.count) return
     var group = filteredGroups[index]
     var variant = group.variants[displayModel.get(index).variantIndex]
@@ -169,7 +199,7 @@ Item {
     history = XComposeHistory.record(history, variant.id, Date.now(), 100)
     saveHistory()
     dismiss()
-    Quickshell.execDetached(["bash", pluginDir + "/scripts/insert.sh", variant.result])
+    Quickshell.execDetached(["bash", pluginDir + (copyOnly ? "/scripts/copy.sh" : "/scripts/insert.sh"), variant.result])
   }
 
   ListModel { id: displayModel }
@@ -182,6 +212,16 @@ Item {
     onLoaded: root.loadCompose(text())
     onFileChanged: reload()
     onLoadFailed: { root.composeLoadState = "missing"; root.entries = []; root.diagnostics = []; root.rebuildDisplay() }
+  }
+
+  FileView {
+    id: favoritesFile
+    path: root.favoritesPath
+    watchChanges: true
+    atomicWrites: true
+    printErrors: false
+    onLoaded: root.loadFavorites(text())
+    onLoadFailed: root.favorites = XComposeFavorites.empty()
   }
 
   FileView {
@@ -234,6 +274,7 @@ Item {
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
           if (event.key === Qt.Key_Escape) { if (root.filterText) root.setFilter(""); else root.dismiss() }
+          else if (event.key === Qt.Key_F && (event.modifiers & Qt.ControlModifier)) root.toggleFavorite(root.selectedIndex)
           else if (Util.editsFilter(event, root.filterText)) root.setFilter(Util.editedFilter(event, root.filterText))
           else if (event.key === Qt.Key_Up) root.select(-1)
           else if (event.key === Qt.Key_Down) root.select(1)
@@ -242,6 +283,7 @@ Item {
           else if (event.key === Qt.Key_PageUp) root.select(-Math.max(1, Math.floor(results.height / root.rowHeight)))
           else if (event.key === Qt.Key_PageDown) root.select(Math.max(1, Math.floor(results.height / root.rowHeight)))
           else if (event.key === Qt.Key_Tab) root.cycleVariant(event.modifiers & Qt.ShiftModifier ? -1 : 1)
+          else if (event.key === Qt.Key_C && (event.modifiers & Qt.ControlModifier)) root.copyResult(root.selectedIndex)
           else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) root.activate(root.selectedIndex)
           else if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127) root.setFilter(root.filterText + event.text)
           else return
@@ -270,9 +312,21 @@ Item {
           elide: Text.ElideRight
         }
 
+        Text {
+          id: quickActions
+          width: parent.width
+          text: "Enter insert  •  Ctrl+C copy  •  Ctrl+F favorite  •  Tab variants  •  Esc close"
+          textFormat: Text.PlainText
+          color: root.foreground
+          opacity: 0.52
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          elide: Text.ElideRight
+        }
+
         Item {
           width: parent.width
-          height: parent.height - root.headerHeight - root.contentSpacing - footer.implicitHeight
+          height: parent.height - root.headerHeight - quickActions.implicitHeight - footer.implicitHeight - root.contentSpacing * 3
 
           ListView {
             id: results
@@ -288,6 +342,7 @@ Item {
               required property string preview
               required property string sequence
               required property int variants
+              required property bool favorite
               readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
               width: results.width
               height: root.rowHeight
@@ -299,7 +354,7 @@ Item {
                 anchors.margins: Style.spacing.md
                 Item {
                   id: labelCell
-                  anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: previewCell.left; anchors.rightMargin: Style.spacing.md
+                  anchors.left: favoriteCell.right; anchors.leftMargin: favorite ? Style.spacing.sm : 0; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: previewCell.left; anchors.rightMargin: Style.spacing.md
                   clip: true
                   Column {
                     width: parent.width
@@ -307,6 +362,23 @@ Item {
                     spacing: Style.spacing.xs
                     Text { width: parent.width; text: descriptionMarkup; textFormat: Text.StyledText; color: hasCursor ? root.selectedText : root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.body; elide: Text.ElideRight; maximumLineCount: 1; wrapMode: Text.NoWrap }
                     Text { width: parent.width; text: sequence + (variants > 1 ? "  •  " + variants + " variants" : ""); textFormat: Text.PlainText; color: hasCursor ? root.selectedText : root.foreground; opacity: 0.58; font.family: root.fontFamily; font.pixelSize: Style.font.caption; elide: Text.ElideRight; maximumLineCount: 1; wrapMode: Text.NoWrap }
+                  }
+                }
+                Item {
+                  id: favoriteCell
+                  width: favorite ? Math.max(Style.space(28), Style.font.title + Style.spacing.sm) : 0
+                  anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
+                  clip: true
+                  Text {
+                    anchors.fill: parent
+                    visible: favorite
+                    text: "󰓎"
+                    textFormat: Text.PlainText
+                    color: hasCursor ? root.selectedText : root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Math.max(Style.font.title, Style.space(20))
+                    horizontalAlignment: Text.AlignLeft
+                    verticalAlignment: Text.AlignVCenter
                   }
                 }
                 Item {

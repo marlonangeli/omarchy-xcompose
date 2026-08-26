@@ -11,8 +11,9 @@ The picker reads `$XCOMPOSEFILE` when set, otherwise `~/.XCompose`. It indexes d
 - Cycle variations with `Tab` and `Shift+Tab`
 - Live reload while the picker is open
 - Local, opaque usage history with no telemetry
+- Favorites, stored locally as opaque entry IDs
 - Safe clipboard-and-paste insertion using `wl-copy` and `wtype`
-- Configurable, reversible `SUPER + CAPS` keybind helper
+- Configurable, reversible `SUPER + Q` keybind helper
 
 ## Requirements
 
@@ -44,9 +45,13 @@ omarchy-shell shell summon dev.ilegna.xcompose '{}'
 | Page Up / Page Down | Move by one page |
 | Tab / Shift+Tab | Cycle shortcuts for the selected output |
 | Enter | Insert the selected result |
+| Ctrl+C | Copy the selected result without inserting |
+| Ctrl+F | Toggle the selected shortcut as a favorite |
 | Escape | Clear search, then close |
 
 Long or multiline values are inserted in full. The menu keeps a compact, single-line preview so one entry cannot cover another.
+
+Favorites rank above history when the search is empty; exact and fuzzy search relevance still takes priority while filtering.
 
 ## XCompose descriptions
 
@@ -64,7 +69,7 @@ See [XCompose format](docs/xcompose.md) for supported syntax and diagnostics.
 
 ## Configure a keybind
 
-The default is `SUPER + code:66`: the physical Caps Lock key on conventional keyboards. It keeps ordinary Caps Lock Compose behavior intact.
+The default is `SUPER + Q`.
 
 ```bash
 ~/.config/omarchy/plugins/dev.ilegna.xcompose/scripts/keybind install

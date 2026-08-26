@@ -13,6 +13,7 @@ function load(name) {
 const parser = load("XComposeParser.js")
 const search = load("XComposeSearch.js")
 const history = load("XComposeHistory.js")
+const favorites = load("XComposeFavorites.js")
 const entries = parser.parse(`
 # Arrow right
 <Multi_key> <r> <r> : "→"
@@ -27,6 +28,14 @@ assert.equal(Object.keys(state.entries).length, 1)
 assert.equal(history.parse("not json").schemaVersion, 1)
 assert.deepEqual(history.parse(JSON.stringify(state)), state)
 
+let pins = favorites.empty()
+pins = favorites.toggle(pins, entries[0].id, 100)
+assert.equal(favorites.isFavorite(pins, entries[0].id), true)
+assert.equal(favorites.isFavorite(favorites.parse("invalid"), entries[0].id), false)
+pins = favorites.toggle(pins, entries[0].id, 100)
+assert.equal(favorites.isFavorite(pins, entries[0].id), false)
+pins = favorites.toggle(pins, entries[0].id, 100)
+
 let rows = search.search(entries, "→", state, 100)
 assert.equal(rows.length, 1)
 assert.equal(rows[0].variants.length, 2)
@@ -35,6 +44,7 @@ assert.equal(search.search(entries, "minus greater", state, 100)[0].result, "→
 assert.equal(search.search(entries, "rr", state, 100)[0].result, "→")
 assert.equal(search.search(entries, "arw rgt", state, 100)[0].result, "→")
 assert.equal(search.search(entries, "", state, 100)[0].result, "←")
+assert.equal(search.search(entries, "", state, pins, 100)[0].result, "→")
 assert.ok(search.search(entries, "arrow", state, 100)[0].descriptionRanges.length > 0)
 
 console.log("search/history tests passed")

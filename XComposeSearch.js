@@ -55,7 +55,11 @@ function historyMeta(history, id) {
   return value && typeof value === "object" ? value : { count: 0, lastUsed: 0 }
 }
 
-function buildGroups(entries, history) {
+function isFavorite(favorites, id) {
+  return !!(favorites && favorites.ids && favorites.ids[id] === true)
+}
+
+function buildGroups(entries, history, favorites) {
   var groups = {}
   ;(entries || []).forEach(function(entry) {
     var key = entry.result
@@ -69,22 +73,25 @@ function buildGroups(entries, history) {
       var meta = historyMeta(history, entry.id)
       return meta.lastUsed > best.lastUsed || (meta.lastUsed === best.lastUsed && meta.count > best.count) ? meta : best
     }, { count: 0, lastUsed: 0 })
+    group.favorite = group.variants.some(function(entry) { return isFavorite(favorites, entry.id) })
     return group
   })
 }
 
 function compareGroups(a, b) {
   if (b.score !== a.score) return b.score - a.score
+  if (a.favorite !== b.favorite) return a.favorite ? -1 : 1
   if (b.history.lastUsed !== a.history.lastUsed) return b.history.lastUsed - a.history.lastUsed
   if (b.history.count !== a.history.count) return b.history.count - a.history.count
   return compareText(a.variants[a.activeVariantIndex].description, b.variants[b.activeVariantIndex].description) || compareText(a.variants[a.activeVariantIndex].sequenceText, b.variants[b.activeVariantIndex].sequenceText)
 }
 
-function search(entries, query, history, limit) {
+function search(entries, query, history, favorites, limit) {
+  if (typeof favorites === "number") { limit = favorites; favorites = null }
   var needle = normalize(query).trim()
   if (!needle) {
-    return buildGroups(entries, history).map(function(group) {
-      return { groupId: group.groupId, result: group.result, variants: group.variants, activeVariantIndex: 0, score: 0, history: group.history, descriptionRanges: [] }
+    return buildGroups(entries, history, favorites).map(function(group) {
+      return { groupId: group.groupId, result: group.result, variants: group.variants, activeVariantIndex: 0, score: 0, history: group.history, favorite: group.favorite, descriptionRanges: [] }
     }).sort(compareGroups).slice(0, limit || 100)
   }
 
@@ -112,7 +119,8 @@ function search(entries, query, history, limit) {
       var meta = historyMeta(history, entry.id)
       return meta.lastUsed > best.lastUsed || (meta.lastUsed === best.lastUsed && meta.count > best.count) ? meta : best
     }, { count: 0, lastUsed: 0 })
-    return { groupId: group.groupId, result: group.result, variants: group.variants, activeVariantIndex: active < 0 ? 0 : active, score: group.candidate.match.score, history: group.history, descriptionRanges: group.candidate.match.descriptionRanges }
+    group.favorite = group.variants.some(function(entry) { return isFavorite(favorites, entry.id) })
+    return { groupId: group.groupId, result: group.result, variants: group.variants, activeVariantIndex: active < 0 ? 0 : active, score: group.candidate.match.score, history: group.history, favorite: group.favorite, descriptionRanges: group.candidate.match.descriptionRanges }
   })
   return groups.sort(compareGroups).slice(0, limit || 100)
 }

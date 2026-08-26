@@ -1,0 +1,12 @@
+const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const path = require("node:path")
+
+const menu = fs.readFileSync(path.join(__dirname, "..", "XComposeMenu.qml"), "utf8")
+assert.match(menu, /event\.key === Qt\.Key_C && \(event\.modifiers & Qt\.ControlModifier\).*copyResult/)
+assert.doesNotMatch(menu, /Qt\.Key_Return \|\| event\.key === Qt\.Key_Enter\).*ControlModifier/)
+assert.match(menu, /event\.key === Qt\.Key_F && \(event\.modifiers & Qt\.ControlModifier\).*toggleFavorite/)
+assert.match(menu, /Ctrl\+C copy.*Ctrl\+F favorite.*Tab variants/)
+assert.match(menu, /id: favoriteCell[\s\S]*text: "󰓎"/)
+assert.match(menu, /anchors\.left: favoriteCell\.right/)
+console.log("menu shortcut tests passed")

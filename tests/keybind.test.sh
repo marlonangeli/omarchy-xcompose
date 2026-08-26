@@ -24,7 +24,7 @@ EOF
 chmod +x "$test_root/bin/hyprctl"
 
 env "${test_environment[@]}" "$project_dir/scripts/keybind" install
-grep -Fq 'o.bind("SUPER + code:66"' "$test_root/home/.config/hypr/bindings.lua"
+grep -Fq 'o.bind("SUPER + Q"' "$test_root/home/.config/hypr/bindings.lua"
 
 env "${test_environment[@]}" "$project_dir/scripts/keybind" install --replace "SUPER + CTRL + X"
 grep -Fq 'hl.unbind("SUPER + CTRL + X")' "$test_root/home/.config/hypr/bindings.lua"
