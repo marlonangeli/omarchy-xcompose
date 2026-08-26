@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "dev.ilegna.xcompose",
+  "name": "XCompose Picker",
+  "version": "0.1.0",
+  "author": "Marlon Angeli",
+  "license": "MIT",
+  "description": "Search and insert shortcuts defined in your XCompose file.",
+  "kinds": [
+    "menu"
+  ],
+  "entryPoints": {
+    "menu": "XComposeMenu.qml"
+  }
+}

@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_id="dev.ilegna.xcompose"
+start_marker="-- omarchy-xcompose:start"
+end_marker="-- omarchy-xcompose:end"
+config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+bindings_file="$config_home/hypr/bindings.lua"
+default_binding="SUPER + code:66"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  scripts/keybind install [--replace] ["KEYS"]
+  scripts/keybind uninstall
+
+The default is "SUPER + code:66", the physical Caps Lock key on a conventional
+PC keyboard. Use --replace only after checking that an existing binding should
+be overridden; it adds hl.unbind() before the plugin binding.
+EOF
+}
+
+fail() {
+  printf 'omarchy-xcompose keybind: %s\n' "$*" >&2
+  exit 1
+}
+
+without_managed_block() {
+  awk -v start="$start_marker" -v end="$end_marker" '
+    $0 == start { managed = 1; next }
+    $0 == end { managed = 0; next }
+    !managed { print }
+  ' "$bindings_file"
+}
+
+next_backup_path() {
+  local base candidate counter
+  base="$bindings_file.bak.$(date -u +%Y%m%d%H%M%S)"
+  candidate="$base"
+  counter=1
+
+  while [[ -e "$candidate" ]]; do
+    candidate="$base.$counter"
+    counter=$((counter + 1))
+  done
+
+  printf '%s\n' "$candidate"
+}
+
+validate_hyprland() {
+  if ! command -v hyprctl >/dev/null 2>&1; then
+    printf 'Warning: hyprctl is unavailable; validate the config after your next Omarchy login.\n' >&2
+    return 0
+  fi
+
+  hyprctl reload >/dev/null || return 1
+  local errors
+  errors="$(hyprctl configerrors 2>&1)" || return 1
+
+  if [[ -n "${errors//[[:space:]]/}" && "$errors" != "ok" ]]; then
+    printf '%s\n' "$errors" >&2
+    return 1
+  fi
+}
+
+install_binding() {
+  local binding="$default_binding"
+  local binding_set=0
+  local replace=0
+
+  while (( $# > 0 )); do
+    case "$1" in
+      --replace)
+        replace=1
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      -*)
+        fail "unknown option: $1"
+        ;;
+      *)
+        (( binding_set == 0 )) || fail "only one binding may be provided"
+        binding="$1"
+        binding_set=1
+        ;;
+    esac
+    shift
+  done
+
+  [[ "$binding" =~ ^[A-Za-z0-9_:+\ -]+$ ]] || fail "unsupported characters in binding: $binding"
+  [[ -f "$bindings_file" ]] || fail "Hyprland bindings file not found: $bindings_file"
+
+  local backup temporary
+  backup="$(next_backup_path)"
+  temporary="$(mktemp "${bindings_file}.tmp.XXXXXX")"
+  cp -- "$bindings_file" "$backup"
+
+  without_managed_block >"$temporary"
+  {
+    printf '\n%s\n' "$start_marker"
+    if (( replace )); then
+      printf 'hl.unbind("%s")\n' "$binding"
+    fi
+    printf 'o.bind("%s", "XCompose picker", "omarchy-shell shell toggle %s")\n' "$binding" "$plugin_id"
+    printf '%s\n' "$end_marker"
+  } >>"$temporary"
+
+  mv -- "$temporary" "$bindings_file"
+
+  if ! validate_hyprland; then
+    cp -- "$backup" "$bindings_file"
+    hyprctl reload >/dev/null 2>&1 || true
+    fail "Hyprland rejected the change; restored $backup"
+  fi
+
+  printf 'Installed %s for %s.\n' "$binding" "$plugin_id"
+  printf 'Backup: %s\n' "$backup"
+}
+
+uninstall_binding() {
+  [[ -f "$bindings_file" ]] || fail "Hyprland bindings file not found: $bindings_file"
+
+  if ! grep -Fxq -- "$start_marker" "$bindings_file"; then
+    printf 'No managed omarchy-xcompose keybind found.\n'
+    return 0
+  fi
+
+  local backup temporary
+  backup="$(next_backup_path)"
+  temporary="$(mktemp "${bindings_file}.tmp.XXXXXX")"
+  cp -- "$bindings_file" "$backup"
+  without_managed_block >"$temporary"
+  mv -- "$temporary" "$bindings_file"
+
+  if ! validate_hyprland; then
+    cp -- "$backup" "$bindings_file"
+    hyprctl reload >/dev/null 2>&1 || true
+    fail "Hyprland rejected the change; restored $backup"
+  fi
+
+  printf 'Removed the managed omarchy-xcompose keybind.\n'
+  printf 'Backup: %s\n' "$backup"
+}
+
+action="${1:-}"
+[[ -n "$action" ]] || { usage; exit 1; }
+shift
+
+case "$action" in
+  install)
+    install_binding "$@"
+    ;;
+  uninstall|remove)
+    (( $# == 0 )) || fail "uninstall does not accept extra arguments"
+    uninstall_binding
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    fail "unknown action: $action"
+    ;;
+esac
