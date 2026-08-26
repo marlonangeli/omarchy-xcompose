@@ -235,6 +235,7 @@ Item {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             text: root.filterText || "Search XCompose shortcuts…"
+            textFormat: Text.PlainText
             color: root.foreground
             opacity: root.filterText ? 1 : 0.58
             font.family: root.fontFamily
@@ -253,6 +254,7 @@ Item {
             model: displayModel
             spacing: root.rowSpacing
             clip: true
+            reuseItems: true
             boundsBehavior: Flickable.StopAtBounds
 
             delegate: Rectangle {
@@ -269,52 +271,75 @@ Item {
               color: hasCursor ? root.selectedBackground : "transparent"
               clip: true
 
-              Column {
-                anchors.left: parent.left
-                anchors.right: valueText.left
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: Style.spacing.md
-                anchors.rightMargin: Style.spacing.md
-                spacing: Style.spacing.xs
+              Item {
+                id: rowContent
+                anchors.fill: parent
+                anchors.margins: Style.spacing.md
+                clip: true
 
-                Text {
-                  width: parent.width
-                  text: description
-                  color: hasCursor ? root.selectedText : root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.body
-                  elide: Text.ElideRight
-                  maximumLineCount: 1
-                  wrapMode: Text.NoWrap
+                Item {
+                  id: labelCell
+                  anchors.top: parent.top
+                  anchors.bottom: parent.bottom
+                  anchors.left: parent.left
+                  anchors.right: previewCell.left
+                  anchors.rightMargin: Style.spacing.md
+                  clip: true
+
+                  Column {
+                    width: parent.width
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Style.spacing.xs
+
+                    Text {
+                      width: parent.width
+                      text: description
+                      textFormat: Text.PlainText
+                      color: hasCursor ? root.selectedText : root.foreground
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.body
+                      elide: Text.ElideRight
+                      maximumLineCount: 1
+                      wrapMode: Text.NoWrap
+                    }
+
+                    Text {
+                      width: parent.width
+                      text: sequence
+                      textFormat: Text.PlainText
+                      color: hasCursor ? root.selectedText : root.foreground
+                      opacity: 0.58
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      elide: Text.ElideRight
+                      maximumLineCount: 1
+                      wrapMode: Text.NoWrap
+                    }
+                  }
                 }
 
-                Text {
-                  width: parent.width
-                  text: sequence
-                  color: hasCursor ? root.selectedText : root.foreground
-                  opacity: 0.58
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  elide: Text.ElideRight
-                  maximumLineCount: 1
-                  wrapMode: Text.NoWrap
-                }
-              }
+                Item {
+                  id: previewCell
+                  width: Math.min(Style.space(140), rowContent.width * 0.32)
+                  anchors.top: parent.top
+                  anchors.bottom: parent.bottom
+                  anchors.right: parent.right
+                  clip: true
 
-              Text {
-                id: valueText
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.rightMargin: Style.spacing.md
-                width: Math.min(implicitWidth, parent.width * 0.32)
-                text: preview
-                color: hasCursor ? root.selectedText : root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.title
-                elide: Text.ElideRight
-                maximumLineCount: 1
-                wrapMode: Text.NoWrap
-                horizontalAlignment: Text.AlignRight
+                  Text {
+                    anchors.fill: parent
+                    text: preview
+                    textFormat: Text.PlainText
+                    color: hasCursor ? root.selectedText : root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.title
+                    elide: Text.ElideRight
+                    maximumLineCount: 1
+                    wrapMode: Text.NoWrap
+                    horizontalAlignment: Text.AlignRight
+                    verticalAlignment: Text.AlignVCenter
+                  }
+                }
               }
 
               MouseArea {
@@ -341,6 +366,7 @@ Item {
 
             Text {
               text: root.composeLoaded ? "No matching shortcuts" : "XCompose file not found"
+              textFormat: Text.PlainText
               color: root.foreground
               opacity: 0.75
               font.family: root.fontFamily
@@ -351,6 +377,7 @@ Item {
 
             Text {
               text: root.composeLoaded ? root.composePath : "Create " + root.composePath + " or set XCOMPOSEFILE"
+              textFormat: Text.PlainText
               color: root.foreground
               opacity: 0.52
               font.family: root.fontFamily
