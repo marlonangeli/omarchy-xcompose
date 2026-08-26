@@ -5,6 +5,9 @@ set -euo pipefail
 value="${1:-}"
 [[ -n "$value" ]] || exit 0
 
+command -v wl-copy >/dev/null 2>&1 || { printf 'omarchy-xcompose: wl-copy is required\n' >&2; exit 127; }
+command -v wtype >/dev/null 2>&1 || { printf 'omarchy-xcompose: wtype is required\n' >&2; exit 127; }
+
 copy_pid=""
 
 cleanup() {
@@ -19,5 +22,5 @@ printf '%s' "$value" | wl-copy --type text/plain --sensitive --foreground &
 copy_pid=$!
 
 sleep 0.15
-wtype -M shift -k Insert -m shift 2>/dev/null || true
+wtype -M shift -k Insert -m shift
 sleep 0.2

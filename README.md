@@ -1,143 +1,95 @@
-# omarchy-xcompose
+# XCompose Picker for Omarchy
 
-An [Omarchy](https://omarchy.org/) Quattro menu plugin for quickly searching and inserting shortcuts from your XCompose file.
+Search, inspect, and insert shortcuts from your personal XCompose file without leaving Omarchy Shell.
 
-The picker reads `$XCOMPOSEFILE` when it is set and falls back to `~/.XCompose`. It indexes rules declared directly in that file, uses nearby comments as searchable descriptions, and leaves `include` directives unexpanded so system-wide compose tables do not overwhelm your personal entries.
+The picker reads `$XCOMPOSEFILE` when set, otherwise `~/.XCompose`. It indexes direct rules only, so system compose tables referenced with `include` never overwhelm personal shortcuts.
+
+## Features
+
+- Search descriptions, output, key names, and compact sequences such as `rr`
+- Group all shortcuts that produce the same output
+- Cycle variations with `Tab` and `Shift+Tab`
+- Live reload while the picker is open
+- Local, opaque usage history with no telemetry
+- Safe clipboard-and-paste insertion using `wl-copy` and `wtype`
+- Configurable, reversible `SUPER + CAPS` keybind helper
 
 ## Requirements
 
 - Omarchy Quattro with shell plugin support
-- `wl-clipboard` and `wtype` (included in a standard Omarchy installation)
-- A local `~/.XCompose` file, or `XCOMPOSEFILE` pointing to one
+- `wl-clipboard` and `wtype`
+- `~/.XCompose`, or an `XCOMPOSEFILE` environment variable
 
 ## Install
 
-Review third-party plugin code before enabling it. Omarchy plugins run unsandboxed inside the long-running shell process.
+Review third-party plugin code before enabling it: Omarchy plugins run inside the long-running, unsandboxed shell process.
 
 ```bash
 omarchy plugin add https://github.com/marlonangeli/omarchy-xcompose.git --enable
 ```
 
-Open the picker without a keybind:
+Open it directly before configuring a keybind:
 
 ```bash
 omarchy-shell shell summon dev.ilegna.xcompose '{}'
 ```
 
-Type to filter, use `Up`/`Down` or `Page Up`/`Page Down` to navigate, press `Enter` to insert, and press `Escape` to clear the query or close the picker.
+## Usage
 
-## XCompose entries
+| Key | Action |
+| --- | --- |
+| Type | Search descriptions, output, or sequences |
+| Up / Down | Move selection |
+| Home / End | First / last result |
+| Page Up / Page Down | Move by one page |
+| Tab / Shift+Tab | Cycle shortcuts for the selected output |
+| Enter | Insert the selected result |
+| Escape | Clear search, then close |
 
-Comments immediately before rules become searchable descriptions. One comment applies to consecutive variants until the next blank line or comment.
+Long or multiline values are inserted in full. The menu keeps a compact, single-line preview so one entry cannot cover another.
+
+## XCompose descriptions
+
+Comments immediately before a rule become its description. An inline comment overrides that inherited description for one rule.
 
 ```text
-# Em dash
-<Multi_key> <space> <space> : "—"
-<Multi_key> <minus> <minus> : "—"
-
 # Arrow right
-<Multi_key> <minus> <greater> : "→"
 <Multi_key> <r> <r> : "→"
-```
+<Multi_key> <minus> <greater> : "→"
 
-Inline comments also work:
-
-```text
 <Multi_key> <c> <o> : "©" # Copyright
 ```
 
-The menu automatically reloads the file while it is open. The parser supports quoted results plus hexadecimal, octal, newline, tab, carriage-return, quote, and backslash escapes. Long or multiline results are inserted in full, while the menu renders a bounded single-line preview with `↵` markers and uses bounded precomputed search text to keep filtering responsive. It intentionally does not expand `include` directives in version 0.1.0.
+See [XCompose format](docs/xcompose.md) for supported syntax and diagnostics.
 
 ## Configure a keybind
 
-Omarchy maps Caps Lock to Compose. To preserve that behavior while using `SUPER + CAPS` for this menu, bind the physical keycode instead of the transformed `Caps_Lock` keysym. On a conventional PC keyboard, Caps Lock is XKB keycode `66`.
-
-First inspect your active bindings and confirm the key is available:
-
-```bash
-omarchy menu keybindings --print
-```
-
-Then run the reversible helper from the installed plugin:
+The default is `SUPER + code:66`: the physical Caps Lock key on conventional keyboards. It keeps ordinary Caps Lock Compose behavior intact.
 
 ```bash
 ~/.config/omarchy/plugins/dev.ilegna.xcompose/scripts/keybind install
 ```
 
-This adds a marked block to `~/.config/hypr/bindings.lua`, creates a timestamped backup, reloads Hyprland, and checks `hyprctl configerrors`. If validation fails, it restores the backup. Confirm keycode `66` with `wev` if your keyboard is unusual.
-
-To use another binding:
+Use another binding when necessary:
 
 ```bash
 ~/.config/omarchy/plugins/dev.ilegna.xcompose/scripts/keybind install "SUPER + CTRL + X"
 ```
 
-If you deliberately want to replace an existing binding, pass `--replace` after identifying what it currently does:
+The helper creates a timestamped backup, validates Hyprland, and restores the previous file if validation fails. Use `--replace` only after checking the current keybinding.
+
+## Diagnose and remove
 
 ```bash
-~/.config/omarchy/plugins/dev.ilegna.xcompose/scripts/keybind install --replace "SUPER + code:66"
-```
-
-That adds the required `hl.unbind(...)` before the new `o.bind(...)` call. You can also configure the binding manually:
-
-```lua
-o.bind(
-  "SUPER + code:66",
-  "XCompose picker",
-  "omarchy-shell shell toggle dev.ilegna.xcompose"
-)
-```
-
-## Update, disable, and remove
-
-Update the Git-managed plugin:
-
-```bash
-omarchy plugin update dev.ilegna.xcompose
-```
-
-Disable it without deleting it:
-
-```bash
-omarchy plugin disable dev.ilegna.xcompose
-```
-
-Remove only the managed keybind:
-
-```bash
+~/.config/omarchy/plugins/dev.ilegna.xcompose/scripts/doctor
 ~/.config/omarchy/plugins/dev.ilegna.xcompose/scripts/keybind uninstall
-```
-
-Remove both the managed keybind and plugin with the wrapper:
-
-```bash
 ~/.config/omarchy/plugins/dev.ilegna.xcompose/scripts/uninstall
 ```
 
-Omarchy deliberately does not run plugin install or uninstall hooks. If you use `omarchy plugin remove dev.ilegna.xcompose` directly, remove the keybind first; after the repository is deleted, its cleanup helper is no longer available. Manually created keybinds are never removed by the helper.
+The uninstall wrapper removes only its marked keybind block before removing the plugin. Manually created bindings are untouched.
 
-## Development
+## Security and development
 
-Validate a checkout before loading it:
+The plugin reads one local XCompose file, invokes `wl-copy` and `wtype`, stores only opaque usage identifiers locally, and makes no network requests or telemetry calls. See [SECURITY.md](SECURITY.md).
 
-```bash
-./tests/run
-omarchy plugin validate .
-qmllint -I "$OMARCHY_PATH/shell" XComposeMenu.qml
-```
-
-Install a local checkout through the same path users exercise:
-
-```bash
-omarchy plugin add "$(pwd)" --enable
-```
-
-Summon it with a disposable fixture instead of changing your real XCompose file:
-
-```bash
-omarchy-shell shell summon dev.ilegna.xcompose '{"path":"/tmp/test.XCompose"}'
-```
-
-## License
-
-[MIT](LICENSE)
+For architecture, XCompose behavior, benchmarks, and local validation, see [docs/architecture.md](docs/architecture.md) and [docs/xcompose.md](docs/xcompose.md).

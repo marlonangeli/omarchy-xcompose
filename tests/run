@@ -5,4 +5,7 @@ set -euo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 node "$project_dir/tests/parser.test.js"
+node "$project_dir/tests/search-history.test.js"
+node "$project_dir/tests/manifest.test.js"
 "$project_dir/tests/keybind.test.sh"
+"$project_dir/tests/doctor.test.sh"
