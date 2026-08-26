@@ -27,6 +27,7 @@ Item {
   property int selectedIndex: 0
   property bool cursorActive: false
   property var entries: []
+  property var filteredEntries: []
 
   property color background: Color.menu.background
   property color foreground: Color.menu.text
@@ -78,14 +79,15 @@ Item {
 
   function rebuildDisplay() {
     var filtered = XComposeParser.filter(root.entries, root.filterText, 100)
+    root.filteredEntries = filtered
 
     displayModel.clear()
     for (var i = 0; i < filtered.length; i++) {
       var entry = filtered[i]
       displayModel.append({
-        description: entry.description,
-        value: entry.value,
-        sequence: entry.sequenceText
+        description: entry.descriptionPreview,
+        preview: entry.valuePreview,
+        sequence: entry.sequencePreview
       })
     }
 
@@ -122,7 +124,7 @@ Item {
     if (index < 0 || index >= displayModel.count)
       return
 
-    var value = displayModel.get(index).value
+    var value = root.filteredEntries[index].value
     if (!value)
       return
 
@@ -256,7 +258,7 @@ Item {
             delegate: Rectangle {
               required property int index
               required property string description
-              required property string value
+              required property string preview
               required property string sequence
 
               readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
@@ -265,6 +267,7 @@ Item {
               height: root.rowHeight
               radius: root.cornerRadius
               color: hasCursor ? root.selectedBackground : "transparent"
+              clip: true
 
               Column {
                 anchors.left: parent.left
@@ -281,6 +284,8 @@ Item {
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
                   elide: Text.ElideRight
+                  maximumLineCount: 1
+                  wrapMode: Text.NoWrap
                 }
 
                 Text {
@@ -291,6 +296,8 @@ Item {
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                   elide: Text.ElideRight
+                  maximumLineCount: 1
+                  wrapMode: Text.NoWrap
                 }
               }
 
@@ -300,11 +307,13 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.rightMargin: Style.spacing.md
                 width: Math.min(implicitWidth, parent.width * 0.32)
-                text: value
+                text: preview
                 color: hasCursor ? root.selectedText : root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.title
                 elide: Text.ElideRight
+                maximumLineCount: 1
+                wrapMode: Text.NoWrap
                 horizontalAlignment: Text.AlignRight
               }
 

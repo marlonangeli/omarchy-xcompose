@@ -46,7 +46,7 @@ Inline comments also work:
 <Multi_key> <c> <o> : "©" # Copyright
 ```
 
-The menu automatically reloads the file while it is open. The parser supports quoted results plus hexadecimal, octal, newline, tab, carriage-return, quote, and backslash escapes. It intentionally does not expand `include` directives in version 0.1.0.
+The menu automatically reloads the file while it is open. The parser supports quoted results plus hexadecimal, octal, newline, tab, carriage-return, quote, and backslash escapes. Long or multiline results are inserted in full, while the menu renders a bounded single-line preview with `↵` markers and uses bounded precomputed search text to keep filtering responsive. It intentionally does not expand `include` directives in version 0.1.0.
 
 ## Configure a keybind
 

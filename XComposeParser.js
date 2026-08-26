@@ -115,10 +115,7 @@ function normalize(value) {
   return text
 }
 
-function fuzzyScore(haystack, needle) {
-  haystack = normalize(haystack)
-  needle = normalize(needle).trim()
-
+function fuzzyScoreNormalized(haystack, needle) {
   if (!needle)
     return 1
 
@@ -144,6 +141,33 @@ function fuzzyScore(haystack, needle) {
   }
 
   return needleIndex === needle.length ? score : -1
+}
+
+function fuzzyScore(haystack, needle) {
+  return fuzzyScoreNormalized(normalize(haystack), normalize(needle).trim())
+}
+
+function bounded(value, limit) {
+  return String(value || "").substring(0, limit)
+}
+
+function compactPreview(value, limit) {
+  var text = String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, " ↵ ")
+    .replace(/\n/g, " ↵ ")
+    .replace(/\t/g, " ⇥ ")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "�")
+    .replace(/\s+/g, " ")
+    .trim()
+
+  if (!text)
+    text = "(whitespace)"
+
+  if (text.length <= limit)
+    return text
+
+  return text.substring(0, Math.max(0, limit - 1)) + "…"
 }
 
 function parse(raw) {
@@ -194,14 +218,22 @@ function parse(raw) {
     if (sequence.length === 0)
       continue
 
-    var description = currentDescription || parsedResult.inlineComment || parsedResult.value
+    var description = currentDescription || parsedResult.inlineComment || compactPreview(parsedResult.value, 160)
+    var sequenceText = sequence.join(" · ")
+    var searchText = bounded(description, 256) + " "
+      + bounded(compactPreview(parsedResult.value, 512), 512) + " "
+      + bounded(sequenceText, 256)
 
     entries.push({
       description: description,
+      descriptionPreview: compactPreview(description, 120),
       value: parsedResult.value,
+      valuePreview: compactPreview(parsedResult.value, 80),
       sequence: sequence,
-      sequenceText: sequence.join(" · "),
-      searchText: description + " " + parsedResult.value + " " + sequence.join(" ")
+      sequenceText: sequenceText,
+      sequencePreview: compactPreview(sequenceText, 120),
+      searchText: searchText,
+      normalizedSearchText: normalize(searchText)
     })
   }
 
@@ -210,10 +242,12 @@ function parse(raw) {
 
 function filter(entries, query, limit) {
   var output = []
+  var normalizedQuery = normalize(query).trim()
 
   for (var i = 0; i < entries.length; i++) {
     var entry = entries[i]
-    var score = fuzzyScore(entry.searchText, query)
+    var normalizedSearchText = entry.normalizedSearchText || normalize(entry.searchText)
+    var score = fuzzyScoreNormalized(normalizedSearchText, normalizedQuery)
 
     if (score >= 0)
       output.push({ entry: entry, score: score })
