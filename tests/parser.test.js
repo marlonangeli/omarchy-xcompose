@@ -29,6 +29,7 @@ include "%L"
 assert.equal(parsed.entries.length, 7)
 assert.equal(parsed.entries[0].description, "Arrow Right")
 assert.equal(parsed.entries[0].result, "→")
+assert.equal(parsed.entries[0].displaySequence[0], "Key")
 assert.equal(parsed.entries[1].description, "Arrow Right")
 assert.equal(parsed.entries[2].description, "Copyright")
 assert.equal(parsed.entries[3].result, "arr")

@@ -76,7 +76,7 @@ function splitInlineComment(value) {
 }
 
 function displayKey(key) {
-  if (key === "Multi_key") return "Caps"
+  if (key === "Multi_key") return "Key"
   var display = key.replace(/^KP_/, "").replace(/_/g, " ")
   return display.charAt(0).toUpperCase() + display.substring(1)
 }
@@ -87,6 +87,19 @@ function parseSequence(lhs) {
   var match
   while ((match = regex.exec(lhs)) !== null) raw.push(match[1])
   return raw
+}
+
+function sequenceTokenIndexes(sequence, compact) {
+  var indexes = []
+  var hasToken = false
+  for (var index = 0; index < sequence.length; index++) {
+    if (sequence[index] === "Multi_key") continue
+    var token = compact ? String(sequence[index]).replace(/[^A-Za-z0-9]/g, "") : String(sequence[index])
+    if (!compact && hasToken) indexes.push(-1)
+    for (var character = 0; character < token.length; character++) indexes.push(index)
+    hasToken = true
+  }
+  return indexes
 }
 
 function parseResult(rhs, line, diagnostics) {
@@ -132,8 +145,11 @@ function parse(raw, source) {
     var rawSequenceText = rawSequence.filter(function(key) { return key !== "Multi_key" }).join(" ")
     var compactSequence = rawSequence.filter(function(key) { return key !== "Multi_key" }).map(function(key) { return key.replace(/[^A-Za-z0-9]/g, "") }).join("")
     var description = result.inlineComment || activeDescription || compactPreview(result.value, 160)
+    var descriptionPreview = compactPreview(description, 120)
+    var valuePreview = compactPreview(result.value, 80)
+    var sequencePreview = compactPreview(sequenceText, 120)
     var id = opaqueId(rawSequence.join("\u001f") + "\u001e" + result.value)
-    entries.push({ id: id, description: description, result: result.value, value: result.value, rawSequence: rawSequence, displaySequence: displaySequence, sequenceText: sequenceText, rawSequenceText: rawSequenceText, compactSequence: compactSequence, source: source || "", line: line, descriptionPreview: compactPreview(description, 120), valuePreview: compactPreview(result.value, 80), sequencePreview: compactPreview(sequenceText, 120), normalizedDescription: normalize(description), normalizedResult: normalize(result.value), normalizedCompactSequence: normalize(compactSequence), normalizedSequence: normalize(rawSequenceText + " " + compactSequence + " " + sequenceText) })
+    entries.push({ id: id, description: description, result: result.value, value: result.value, rawSequence: rawSequence, displaySequence: displaySequence, sequenceText: sequenceText, rawSequenceText: rawSequenceText, compactSequence: compactSequence, source: source || "", line: line, descriptionPreview: descriptionPreview, valuePreview: valuePreview, sequencePreview: sequencePreview, rawSequenceTokenIndexes: sequenceTokenIndexes(rawSequence, false), compactSequenceTokenIndexes: sequenceTokenIndexes(rawSequence, true), normalizedDescription: normalize(description), normalizedDescriptionPreview: normalize(descriptionPreview), normalizedResult: normalize(result.value), normalizedValuePreview: normalize(valuePreview), normalizedRawSequenceText: normalize(rawSequenceText), normalizedCompactSequence: normalize(compactSequence), normalizedSequencePreview: normalize(sequencePreview), normalizedSequence: normalize(rawSequenceText + " " + compactSequence + " " + sequenceText) })
   }
   var bySequence = {}
   entries.forEach(function(entry) {

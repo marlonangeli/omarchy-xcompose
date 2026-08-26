@@ -29,7 +29,6 @@ Item {
   property bool opened: false
   property string filterText: ""
   property int selectedIndex: 0
-  property bool cursorActive: false
   property var entries: []
   property var diagnostics: []
   property var filteredGroups: []
@@ -68,7 +67,8 @@ Item {
     composePath = resolvePath(typeof payload.path === "string" ? payload.path : "")
     filterText = ""
     selectedIndex = 0
-    cursorActive = false
+    filteredGroups = []
+    displayModel.clear()
     variantSelections = ({})
     opened = true
     composeLoadState = "loading"
@@ -87,16 +87,21 @@ Item {
     return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;")
   }
 
-  function descriptionMarkup(value, ranges) {
+  function highlightMarkup(value, ranges) {
     var selected = {}
     ;(ranges || []).forEach(function(range) { for (var i = range.start; i < range.start + range.length; i++) selected[i] = true })
     var text = String(value || "")
     var output = ""
     for (var index = 0; index < text.length; index++) {
       var character = escapeMarkup(text.charAt(index))
-      output += selected[index] ? "<b>" + character + "</b>" : character
+      output += selected[index] ? "<b><u>" + character + "</u></b>" : character
     }
     return output
+  }
+
+  function filterDisplayText() {
+    // Keep filterText unchanged for matching; only make literal spaces visible.
+    return filterText.replace(/ /g, "▁")
   }
 
   function loadCompose(raw) {
@@ -128,8 +133,8 @@ Item {
   function warningCount() { return diagnostics.filter(function(item) { return item.severity === "warning" }).length }
   function errorCount() { return diagnostics.filter(function(item) { return item.severity === "error" }).length }
 
-  function rebuildDisplay() {
-    var selectedGroupId = filteredGroups.length && selectedIndex < filteredGroups.length ? filteredGroups[selectedIndex].groupId : ""
+  function rebuildDisplay(resetSelection) {
+    var selectedGroupId = !resetSelection && filteredGroups.length && selectedIndex < filteredGroups.length ? filteredGroups[selectedIndex].groupId : ""
     var groups = XComposeSearch.search(entries, filterText, history, favorites, 100)
     filteredGroups = groups
     displayModel.clear()
@@ -138,29 +143,26 @@ Item {
       var savedIndex = variantSelections[group.groupId]
       var variantIndex = typeof savedIndex === "number" ? Math.max(0, Math.min(savedIndex, group.variants.length - 1)) : group.activeVariantIndex
       var variant = group.variants[variantIndex]
-      var match = XComposeSearch.matchEntry(variant, XComposeSearch.normalize(filterText)) || { descriptionRanges: [] }
-      displayModel.append({ groupId: group.groupId, description: variant.descriptionPreview, descriptionMarkup: root.descriptionMarkup(variant.descriptionPreview, match.descriptionRanges), preview: variant.valuePreview, sequence: variant.sequencePreview, variants: group.variants.length, variantIndex: variantIndex, favorite: group.favorite })
+      var match = XComposeSearch.matchEntry(variant, XComposeSearch.normalize(filterText)) || { descriptionRanges: [], resultRanges: [], sequenceRanges: [] }
+      displayModel.append({ groupId: group.groupId, description: variant.descriptionPreview, descriptionMarkup: root.highlightMarkup(variant.descriptionPreview, match.descriptionRanges), previewMarkup: root.highlightMarkup(variant.valuePreview, match.resultRanges), sequenceMarkup: root.highlightMarkup(variant.sequencePreview, match.sequenceRanges), variants: group.variants.length, variantIndex: variantIndex, favorite: group.favorite })
     }
-    if (!displayModel.count) { selectedIndex = 0; cursorActive = false; return }
+    if (!displayModel.count) { selectedIndex = 0; return }
     var restored = -1
     for (var row = 0; row < displayModel.count; row++) if (displayModel.get(row).groupId === selectedGroupId) { restored = row; break }
-    selectedIndex = restored >= 0 ? restored : Math.min(selectedIndex, displayModel.count - 1)
-    cursorActive = true
+    selectedIndex = resetSelection ? 0 : (restored >= 0 ? restored : Math.min(selectedIndex, displayModel.count - 1))
     Qt.callLater(function() { results.positionViewAtIndex(selectedIndex, ListView.Contain) })
   }
 
-  function setFilter(value) { filterText = value; selectedIndex = 0; rebuildDisplay() }
+  function setFilter(value) { filterText = value; selectedIndex = 0; rebuildDisplay(true) }
 
   function select(delta) {
     if (!displayModel.count) return
-    cursorActive = true
     selectedIndex = (selectedIndex + delta + displayModel.count) % displayModel.count
     results.positionViewAtIndex(selectedIndex, ListView.Contain)
   }
 
   function selectAbsolute(index) {
     if (!displayModel.count) return
-    cursorActive = true
     selectedIndex = Math.max(0, Math.min(index, displayModel.count - 1))
     results.positionViewAtIndex(selectedIndex, ListView.Contain)
   }
@@ -303,7 +305,7 @@ Item {
           width: parent.width
           height: root.headerHeight
           verticalAlignment: Text.AlignVCenter
-          text: root.filterText || "Search XCompose shortcuts…"
+          text: root.filterText ? root.filterDisplayText() : "Search XCompose shortcuts…"
           textFormat: Text.PlainText
           color: root.foreground
           opacity: root.filterText ? 1 : 0.58
@@ -339,15 +341,17 @@ Item {
             delegate: Rectangle {
               required property int index
               required property string descriptionMarkup
-              required property string preview
-              required property string sequence
+              required property string previewMarkup
+              required property string sequenceMarkup
               required property int variants
               required property bool favorite
-              readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
+              readonly property bool hasCursor: index === root.selectedIndex
               width: results.width
               height: root.rowHeight
               radius: root.cornerRadius
               color: hasCursor ? root.selectedBackground : "transparent"
+              border.width: hasCursor ? 2 : 0
+              border.color: hasCursor ? root.selectedText : "transparent"
               clip: true
               Item {
                 anchors.fill: parent
@@ -361,7 +365,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: Style.spacing.xs
                     Text { width: parent.width; text: descriptionMarkup; textFormat: Text.StyledText; color: hasCursor ? root.selectedText : root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.body; elide: Text.ElideRight; maximumLineCount: 1; wrapMode: Text.NoWrap }
-                    Text { width: parent.width; text: sequence + (variants > 1 ? "  •  " + variants + " variants" : ""); textFormat: Text.PlainText; color: hasCursor ? root.selectedText : root.foreground; opacity: 0.58; font.family: root.fontFamily; font.pixelSize: Style.font.caption; elide: Text.ElideRight; maximumLineCount: 1; wrapMode: Text.NoWrap }
+                    Text { width: parent.width; text: sequenceMarkup + (variants > 1 ? "  •  " + variants + " variants" : ""); textFormat: Text.StyledText; color: hasCursor ? root.selectedText : root.foreground; opacity: 0.58; font.family: root.fontFamily; font.pixelSize: Style.font.caption; elide: Text.ElideRight; maximumLineCount: 1; wrapMode: Text.NoWrap }
                   }
                 }
                 Item {
@@ -386,19 +390,13 @@ Item {
                   width: Math.min(Style.space(160), parent.width * 0.34)
                   anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
                   clip: true
-                  Text { anchors.fill: parent; text: preview; textFormat: Text.PlainText; color: hasCursor ? root.selectedText : root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.title; elide: Text.ElideRight; maximumLineCount: 1; wrapMode: Text.NoWrap; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter }
+                  Text { anchors.fill: parent; text: previewMarkup; textFormat: Text.StyledText; color: hasCursor ? root.selectedText : root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.title; elide: Text.ElideRight; maximumLineCount: 1; wrapMode: Text.NoWrap; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter }
                 }
               }
               MouseArea {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onContainsMouseChanged: {
-                  if (containsMouse) {
-                    root.cursorActive = true
-                    root.selectedIndex = index
-                  }
-                }
                 onClicked: root.activate(index)
               }
             }

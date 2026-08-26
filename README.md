@@ -6,7 +6,7 @@ The picker reads `$XCOMPOSEFILE` when set, otherwise `~/.XCompose`. It indexes d
 
 ## Features
 
-- Search descriptions, output, key names, and compact sequences such as `rr`
+- Search descriptions, output, key names, compact sequences such as `rr`, and Compose tokens such as `<space> <e>`
 - Group all shortcuts that produce the same output
 - Cycle variations with `Tab` and `Shift+Tab`
 - Live reload while the picker is open
@@ -52,6 +52,22 @@ omarchy-shell shell summon dev.ilegna.xcompose '{}'
 Long or multiline values are inserted in full. The menu keeps a compact, single-line preview so one entry cannot cover another.
 
 Favorites rank above history when the search is empty; exact and fuzzy search relevance still takes priority while filtering.
+
+Compose tokens can be typed literally. For example, `<space> <e>` finds a rule
+whose sequence contains `Space` followed by `E`; add ordinary words such as
+`euro` to require both the tokens and the normal fuzzy search match.
+
+A leading literal space is also a `Space` token: type space then `n` to find
+`<space> <n>`. The search field renders literal spaces as `▁` for visibility,
+while preserving the actual characters for matching; use explicit tokens such
+as `<space> <space>` when searching for repeated spaces.
+
+Common leading punctuation also searches its Compose key: `.`, `,`, `:`, `;`,
+`<`, `>`, `/`, `\`, `[`, `]`, brackets, quotes, and standard symbol keys.
+For example, typing `/` finds rules containing `<slash>`.
+
+Matching text is bold and underlined directly in the description, output, and
+Compose sequence, so it is clear why each result was returned.
 
 ## XCompose descriptions
 
