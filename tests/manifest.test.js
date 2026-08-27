@@ -1,0 +1,13 @@
+const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const path = require("node:path")
+
+const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "manifest.json"), "utf8"))
+assert.equal(manifest.schemaVersion, 1)
+assert.match(manifest.id, /^[a-z0-9]+(?:[.-][a-z0-9]+)+$/)
+assert.equal(manifest.name, "XCompose Picker")
+assert.match(manifest.version, /^\d+\.\d+\.\d+$/)
+assert.ok(Array.isArray(manifest.kinds) && manifest.kinds.includes("menu"))
+assert.equal(manifest.entryPoints.menu, "XComposeMenu.qml")
+assert.ok(fs.existsSync(path.join(__dirname, "..", manifest.entryPoints.menu)))
+console.log("manifest tests passed")

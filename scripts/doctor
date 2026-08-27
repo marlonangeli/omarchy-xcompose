@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_id="dev.ilegna.xcompose"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+plugin_dir="$(cd -- "$script_dir/.." && pwd)"
+config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+bindings_file="$config_home/hypr/bindings.lua"
+compose_path="${XCOMPOSEFILE:-$HOME/.XCompose}"
+errors=0
+
+if [[ "$compose_path" == ~/* ]]; then
+  compose_path="$HOME/${compose_path#~/}"
+elif [[ "$compose_path" != /* ]]; then
+  compose_path="$HOME/$compose_path"
+fi
+
+ok() { printf 'ok: %s\n' "$*"; }
+warn() { printf 'warning: %s\n' "$*"; }
+fail() { printf 'error: %s\n' "$*" >&2; errors=1; }
+
+for command_name in omarchy omarchy-shell wl-copy wtype; do
+  if command -v "$command_name" >/dev/null 2>&1; then ok "$command_name found"; else fail "$command_name is required"; fi
+done
+
+if [[ -r "$compose_path" ]]; then
+  ok "XCompose file is readable: $compose_path"
+  if command -v node >/dev/null 2>&1; then
+    if ! node "$plugin_dir/scripts/validate-compose.js" "$compose_path"; then errors=1; fi
+  else
+    warn "node not found; duplicate sequence validation skipped"
+  fi
+else
+  fail "XCompose file is not readable: $compose_path"
+fi
+
+if command -v omarchy >/dev/null 2>&1; then
+  if omarchy plugin validate "$plugin_dir" >/dev/null 2>&1; then ok "plugin manifest is valid"; else fail "plugin manifest validation failed"; fi
+  if plugin_list="$(omarchy plugin list --json 2>/dev/null)" && [[ "$plugin_list" == *"$plugin_id"* ]]; then
+    ok "plugin is discovered by Omarchy"
+  else
+    warn "could not confirm plugin discovery; start omarchy-shell and retry"
+  fi
+fi
+
+if [[ -f "$bindings_file" ]] && grep -Fxq -- '-- omarchy-xcompose:start' "$bindings_file"; then
+  marker_count="$(grep -Fc -- '-- omarchy-xcompose:start' "$bindings_file")"
+  if [[ "$marker_count" == 1 ]]; then ok "one managed keybind block is installed"; else warn "$marker_count managed keybind blocks found"; fi
+else
+  warn "no managed keybind block found"
+fi
+
+exit "$errors"

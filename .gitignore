@@ -5,4 +5,5 @@
 *.pem
 *.swp
 *.tmp
-PROMPT.md
+temp/
+BACKLOG.md
