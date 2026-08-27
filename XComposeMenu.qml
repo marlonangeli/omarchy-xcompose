@@ -170,12 +170,16 @@ Item {
   }
 
   function footerText() {
-    var parts = []
+    var parts = ["↑/↓ navigate", "Ctrl+F favorite", "Tab variants"]
     if (displayModel.count) parts.push((selectedIndex + 1) + "/" + displayModel.count)
     if (previewOpen) parts.push("Full preview")
     if (errorCount()) parts.push(errorCount() + " conflict" + (errorCount() === 1 ? "" : "s"))
     else if (warningCount()) parts.push(warningCount() + " rule warning" + (warningCount() === 1 ? "" : "s"))
     return parts.join("  •  ")
+  }
+
+  function footerActionsText() {
+    return previewOpen ? "Enter insert  •  Ctrl+C copy  •  Ctrl+P results  •  Esc results" : "Enter insert  •  Ctrl+C copy  •  Ctrl+P preview  •  Esc close"
   }
 
   function rebuildDisplay(resetSelection) {
@@ -361,21 +365,9 @@ Item {
           elide: Text.ElideRight
         }
 
-        Text {
-          id: quickActions
-          width: parent.width
-          text: root.previewOpen ? "Enter insert • Ctrl+C copy • Ctrl+P results • Esc results" : "Enter insert • Ctrl+C copy • Ctrl+F favorite • Ctrl+P preview • Tab variants • Esc close"
-          textFormat: Text.PlainText
-          color: root.foreground
-          opacity: 0.52
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          elide: Text.ElideRight
-        }
-
         Item {
           width: parent.width
-          height: parent.height - root.headerHeight - quickActions.implicitHeight - footer.implicitHeight - root.contentSpacing * 3
+          height: parent.height - root.headerHeight - footer.implicitHeight - root.contentSpacing * 2
 
           ListView {
             id: results
@@ -522,16 +514,34 @@ Item {
           }
         }
 
-        Text {
+        Column {
           id: footer
           width: parent.width
-          text: root.footerText()
-          textFormat: Text.PlainText
-          color: root.foreground
-          opacity: 0.52
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          elide: Text.ElideRight
+          spacing: Style.spacing.xs
+
+          Text {
+            id: footerActions
+            width: parent.width
+            text: root.footerActionsText()
+            textFormat: Text.PlainText
+            color: root.foreground
+            opacity: 0.58
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            elide: Text.ElideRight
+          }
+
+          Text {
+            id: footerStatus
+            width: parent.width
+            text: root.footerText()
+            textFormat: Text.PlainText
+            color: root.foreground
+            opacity: 0.45
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            elide: Text.ElideRight
+          }
         }
       }
     }

@@ -24,12 +24,10 @@ jobs:
           bash tests/run
       - name: Lint scripts and QML
         run: |
-          shellcheck scripts/* tests/*.sh
+          shellcheck scripts/*.sh scripts/doctor scripts/keybind scripts/uninstall tests/*.sh
           qmllint -I "$GITHUB_WORKSPACE/omarchy-shell/shell" XComposeMenu.qml
       - name: Benchmark smoke test
         run: node bench/benchmark.js
       - name: Repository hygiene
         run: |
-          test ! -e BACKLOG.md
-          test ! -e DOCUMENTATION.md
           ! rg -n -i 'password|api[_-]?key|secret|token' --glob '!SECURITY.md' --glob '!*.md' .

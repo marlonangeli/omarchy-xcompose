@@ -155,7 +155,7 @@ function parse(raw, source) {
   entries.forEach(function(entry) {
     var key = entry.rawSequence.join("\u001f")
     if (!bySequence[key]) bySequence[key] = entry
-    else diagnostics.push({ severity: bySequence[key].result === entry.result ? "warning" : "error", line: entry.line, code: bySequence[key].result === entry.result ? "duplicate-sequence" : "conflicting-sequence", message: bySequence[key].result === entry.result ? "Duplicate compose sequence" : "Compose sequence produces more than one result" })
+    else diagnostics.push({ severity: bySequence[key].result === entry.result ? "warning" : "error", line: entry.line, relatedLine: bySequence[key].line, code: bySequence[key].result === entry.result ? "duplicate-sequence" : "conflicting-sequence", message: bySequence[key].result === entry.result ? "Duplicate compose sequence first defined on line " + bySequence[key].line : "Compose sequence conflicts with line " + bySequence[key].line })
   })
   return { entries: entries, diagnostics: diagnostics, includes: includes }
 }

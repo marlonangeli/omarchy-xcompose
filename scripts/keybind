@@ -12,11 +12,13 @@ default_binding="SUPER + Q"
 usage() {
   cat <<'EOF'
 Usage:
+  scripts/keybind install [--replace] [--binding "KEYS"]
   scripts/keybind install [--replace] ["KEYS"]
   scripts/keybind uninstall
 
-The default is "SUPER + Q". Use --replace only after checking that an existing
-binding should be overridden; it adds hl.unbind() before the plugin binding.
+The default binding is "SUPER + Q". Use --binding to choose another keybind.
+Use --replace only after checking that an existing binding should be overridden;
+it adds hl.unbind() before the plugin binding.
 EOF
 }
 
@@ -72,6 +74,13 @@ install_binding() {
     case "$1" in
       --replace)
         replace=1
+        ;;
+      -b|--binding)
+        shift
+        (( $# > 0 )) || fail "--binding requires a value"
+        (( binding_set == 0 )) || fail "only one binding may be provided"
+        binding="$1"
+        binding_set=1
         ;;
       -h|--help)
         usage

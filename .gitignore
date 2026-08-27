@@ -5,5 +5,5 @@
 *.pem
 *.swp
 *.tmp
-.local-plugin-backup-v0.2/
-PROMPT.md
+temp/
+BACKLOG.md

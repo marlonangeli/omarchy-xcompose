@@ -40,6 +40,8 @@ assert.equal(parsed.includes.length, 1)
 assert.ok(parsed.diagnostics.some(item => item.code === "invalid-result"))
 assert.ok(parsed.diagnostics.some(item => item.code === "duplicate-sequence"))
 assert.ok(parsed.diagnostics.some(item => item.code === "conflicting-sequence"))
+assert.equal(parsed.diagnostics.find(item => item.code === "duplicate-sequence").relatedLine, 4)
+assert.equal(parsed.diagnostics.find(item => item.code === "conflicting-sequence").relatedLine, 4)
 
 const longResult = Array.from({ length: 200 }, (_, index) => `line ${index}`).join("\\n")
 const longEntry = parser.parse(`<Multi_key> <l> <o> : "${longResult}" # Long output`).entries[0]

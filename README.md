@@ -94,13 +94,19 @@ The default is `SUPER + Q`.
 ~/.config/omarchy/plugins/dev.ilegna.xcompose/scripts/keybind install
 ```
 
-Use another binding when necessary:
+Choose another binding explicitly:
 
 ```bash
-~/.config/omarchy/plugins/dev.ilegna.xcompose/scripts/keybind install "SUPER + CTRL + X"
+~/.config/omarchy/plugins/dev.ilegna.xcompose/scripts/keybind install --binding "SUPER + CTRL + X"
 ```
 
-The helper creates a timestamped backup, validates Hyprland, and restores the previous file if validation fails. Use `--replace` only after checking the current keybinding.
+The helper creates a timestamped backup, validates Hyprland, and restores the
+previous file if validation fails. Re-running `install` replaces only the
+plugin-managed block. Use `--replace` only after checking the current keybinding;
+it adds the required `hl.unbind()` override.
+
+See [Configuration](docs/configuration.md) for source selection, state files,
+custom launch payloads, and keybinding management.
 
 ## Diagnose and remove
 
@@ -112,8 +118,13 @@ The helper creates a timestamped backup, validates Hyprland, and restores the pr
 
 The uninstall wrapper removes only its marked keybind block before removing the plugin. Manually created bindings are untouched.
 
+`doctor` checks required commands, plugin discovery, the managed keybinding,
+and duplicate or conflicting XCompose sequences. See
+[Troubleshooting](docs/troubleshooting.md) when a check fails.
+
 ## Security and development
 
 The plugin reads one local XCompose file, invokes `wl-copy` and `wtype`, stores only opaque usage identifiers locally, and makes no network requests or telemetry calls. See [SECURITY.md](SECURITY.md).
 
-For architecture, XCompose behavior, benchmarks, and local validation, see [docs/architecture.md](docs/architecture.md) and [docs/xcompose.md](docs/xcompose.md).
+For architecture, XCompose behavior, and local validation, see
+[Architecture](docs/architecture.md) and [XCompose format](docs/xcompose.md).
