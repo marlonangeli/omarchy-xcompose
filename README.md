@@ -47,9 +47,12 @@ omarchy-shell shell summon dev.ilegna.xcompose '{}'
 | Enter | Insert the selected result |
 | Ctrl+C | Copy the selected result without inserting |
 | Ctrl+F | Toggle the selected shortcut as a favorite |
+| Ctrl+P | Toggle the full result preview |
 | Escape | Clear search, then close |
 
-Long or multiline values are inserted in full. The menu keeps a compact, single-line preview so one entry cannot cover another.
+Long or multiline values are inserted in full. The results list keeps a compact,
+single-line preview so one entry cannot cover another; press `Ctrl+P` to inspect
+the selected value in a wrapped, scrollable full preview before inserting it.
 
 Favorites rank above history when the search is empty; exact and fuzzy search relevance still takes priority while filtering.
 

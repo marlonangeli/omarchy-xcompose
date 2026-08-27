@@ -29,6 +29,11 @@ Item {
   property bool opened: false
   property string filterText: ""
   property int selectedIndex: 0
+  property bool previewOpen: false
+  property string previewDescription: ""
+  property string previewSequence: ""
+  property string previewResult: ""
+  property int previewLine: 0
   property var entries: []
   property var diagnostics: []
   property var filteredGroups: []
@@ -67,6 +72,8 @@ Item {
     composePath = resolvePath(typeof payload.path === "string" ? payload.path : "")
     filterText = ""
     selectedIndex = 0
+    previewOpen = false
+    clearPreview()
     filteredGroups = []
     displayModel.clear()
     variantSelections = ({})
@@ -133,6 +140,44 @@ Item {
   function warningCount() { return diagnostics.filter(function(item) { return item.severity === "warning" }).length }
   function errorCount() { return diagnostics.filter(function(item) { return item.severity === "error" }).length }
 
+  function clearPreview() {
+    previewDescription = ""
+    previewSequence = ""
+    previewResult = ""
+    previewLine = 0
+  }
+
+  function selectedVariant(index) {
+    if (index < 0 || index >= displayModel.count || index >= filteredGroups.length) return null
+    var group = filteredGroups[index]
+    var row = displayModel.get(index)
+    return group && row ? group.variants[row.variantIndex] : null
+  }
+
+  function syncPreview() {
+    var variant = selectedVariant(selectedIndex)
+    if (!variant) { clearPreview(); return }
+    previewDescription = variant.descriptionPreview
+    previewSequence = variant.sequencePreview
+    previewResult = variant.result
+    previewLine = variant.line
+  }
+
+  function togglePreview() {
+    if (!displayModel.count) return
+    previewOpen = !previewOpen
+    syncPreview()
+  }
+
+  function footerText() {
+    var parts = []
+    if (displayModel.count) parts.push((selectedIndex + 1) + "/" + displayModel.count)
+    if (previewOpen) parts.push("Full preview")
+    if (errorCount()) parts.push(errorCount() + " conflict" + (errorCount() === 1 ? "" : "s"))
+    else if (warningCount()) parts.push(warningCount() + " rule warning" + (warningCount() === 1 ? "" : "s"))
+    return parts.join("  •  ")
+  }
+
   function rebuildDisplay(resetSelection) {
     var selectedGroupId = !resetSelection && filteredGroups.length && selectedIndex < filteredGroups.length ? filteredGroups[selectedIndex].groupId : ""
     var groups = XComposeSearch.search(entries, filterText, history, favorites, 100)
@@ -146,24 +191,27 @@ Item {
       var match = XComposeSearch.matchEntry(variant, XComposeSearch.normalize(filterText)) || { descriptionRanges: [], resultRanges: [], sequenceRanges: [] }
       displayModel.append({ groupId: group.groupId, description: variant.descriptionPreview, descriptionMarkup: root.highlightMarkup(variant.descriptionPreview, match.descriptionRanges), previewMarkup: root.highlightMarkup(variant.valuePreview, match.resultRanges), sequenceMarkup: root.highlightMarkup(variant.sequencePreview, match.sequenceRanges), variants: group.variants.length, variantIndex: variantIndex, favorite: group.favorite })
     }
-    if (!displayModel.count) { selectedIndex = 0; return }
+    if (!displayModel.count) { selectedIndex = 0; previewOpen = false; clearPreview(); return }
     var restored = -1
     for (var row = 0; row < displayModel.count; row++) if (displayModel.get(row).groupId === selectedGroupId) { restored = row; break }
     selectedIndex = resetSelection ? 0 : (restored >= 0 ? restored : Math.min(selectedIndex, displayModel.count - 1))
+    syncPreview()
     Qt.callLater(function() { results.positionViewAtIndex(selectedIndex, ListView.Contain) })
   }
 
-  function setFilter(value) { filterText = value; selectedIndex = 0; rebuildDisplay(true) }
+  function setFilter(value) { filterText = value; selectedIndex = 0; previewOpen = false; rebuildDisplay(true) }
 
   function select(delta) {
     if (!displayModel.count) return
     selectedIndex = (selectedIndex + delta + displayModel.count) % displayModel.count
+    syncPreview()
     results.positionViewAtIndex(selectedIndex, ListView.Contain)
   }
 
   function selectAbsolute(index) {
     if (!displayModel.count) return
     selectedIndex = Math.max(0, Math.min(index, displayModel.count - 1))
+    syncPreview()
     results.positionViewAtIndex(selectedIndex, ListView.Contain)
   }
 
@@ -177,8 +225,7 @@ Item {
 
   function toggleFavorite(index) {
     if (index < 0 || index >= displayModel.count) return
-    var group = filteredGroups[index]
-    var variant = group.variants[displayModel.get(index).variantIndex]
+    var variant = selectedVariant(index)
     if (!variant) return
     favorites = XComposeFavorites.toggle(favorites, variant.id, 100)
     saveFavorites()
@@ -195,8 +242,7 @@ Item {
 
   function useResult(index, copyOnly) {
     if (index < 0 || index >= displayModel.count) return
-    var group = filteredGroups[index]
-    var variant = group.variants[displayModel.get(index).variantIndex]
+    var variant = selectedVariant(index)
     if (!variant || !variant.result) return
     history = XComposeHistory.record(history, variant.id, Date.now(), 100)
     saveHistory()
@@ -275,8 +321,9 @@ Item {
         focus: true
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
-          if (event.key === Qt.Key_Escape) { if (root.filterText) root.setFilter(""); else root.dismiss() }
+          if (event.key === Qt.Key_Escape) { if (root.previewOpen) root.previewOpen = false; else if (root.filterText) root.setFilter(""); else root.dismiss() }
           else if (event.key === Qt.Key_F && (event.modifiers & Qt.ControlModifier)) root.toggleFavorite(root.selectedIndex)
+          else if (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier)) root.togglePreview()
           else if (Util.editsFilter(event, root.filterText)) root.setFilter(Util.editedFilter(event, root.filterText))
           else if (event.key === Qt.Key_Up) root.select(-1)
           else if (event.key === Qt.Key_Down) root.select(1)
@@ -317,7 +364,7 @@ Item {
         Text {
           id: quickActions
           width: parent.width
-          text: "Enter insert  •  Ctrl+C copy  •  Ctrl+F favorite  •  Tab variants  •  Esc close"
+          text: root.previewOpen ? "Enter insert • Ctrl+C copy • Ctrl+P results • Esc results" : "Enter insert • Ctrl+C copy • Ctrl+F favorite • Ctrl+P preview • Tab variants • Esc close"
           textFormat: Text.PlainText
           color: root.foreground
           opacity: 0.52
@@ -333,6 +380,7 @@ Item {
           ListView {
             id: results
             anchors.fill: parent
+            visible: !root.previewOpen
             model: displayModel
             spacing: root.rowSpacing
             clip: true
@@ -403,8 +451,71 @@ Item {
           }
 
           Column {
+            id: previewPane
+            anchors.fill: parent
+            visible: root.previewOpen && displayModel.count > 0
+            spacing: root.contentSpacing
+
+            Text {
+              id: previewTitle
+              width: parent.width
+              text: root.previewDescription
+              textFormat: Text.PlainText
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.title
+              elide: Text.ElideRight
+              maximumLineCount: 1
+            }
+
+            Text {
+              id: previewMetadata
+              width: parent.width
+              text: root.previewSequence + (root.previewLine ? "  •  line " + root.previewLine : "")
+              textFormat: Text.PlainText
+              color: root.foreground
+              opacity: 0.58
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              elide: Text.ElideRight
+              maximumLineCount: 1
+            }
+
+            Rectangle {
+              width: parent.width
+              height: Math.max(0, parent.height - previewTitle.implicitHeight - previewMetadata.implicitHeight - previewPane.spacing * 2)
+              radius: root.cornerRadius
+              color: root.selectedBackground
+              border.width: 1
+              border.color: root.border
+              clip: true
+
+              Flickable {
+                id: previewScroll
+                anchors.fill: parent
+                anchors.margins: Style.spacing.md
+                contentWidth: width
+                contentHeight: Math.max(height, fullPreviewText.implicitHeight)
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+
+                Text {
+                  id: fullPreviewText
+                  width: previewScroll.width
+                  text: root.previewResult
+                  textFormat: Text.PlainText
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                  wrapMode: Text.WrapAnywhere
+                }
+              }
+            }
+          }
+
+          Column {
             anchors.centerIn: parent
-            visible: displayModel.count === 0
+            visible: !root.previewOpen && displayModel.count === 0
             spacing: Style.space(8)
             Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.composeLoadState === "missing" ? "XCompose file not found" : root.entries.length ? "No matching shortcuts" : "No valid XCompose entries"; textFormat: Text.PlainText; color: root.foreground; opacity: 0.75; font.family: root.fontFamily; font.pixelSize: Style.font.title }
             Text { width: Math.min(implicitWidth, card.width - root.contentMargin * 2); horizontalAlignment: Text.AlignHCenter; text: root.composeLoadState === "missing" ? "Create " + root.composePath + " or set XCOMPOSEFILE" : root.composePath; textFormat: Text.PlainText; color: root.foreground; opacity: 0.52; font.family: root.fontFamily; font.pixelSize: Style.font.caption; elide: Text.ElideMiddle }
@@ -414,7 +525,7 @@ Item {
         Text {
           id: footer
           width: parent.width
-          text: root.errorCount() ? root.errorCount() + " conflict" + (root.errorCount() === 1 ? "" : "s") + " • run scripts/doctor" : root.warningCount() ? root.warningCount() + " rule warning" + (root.warningCount() === 1 ? "" : "s") : displayModel.count > 0 ? "Tab cycles variants • Esc closes" : ""
+          text: root.footerText()
           textFormat: Text.PlainText
           color: root.foreground
           opacity: 0.52
