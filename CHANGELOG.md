@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+- Prevent prototype-named XCompose results from crashing result grouping.
+- Bound XCompose source, parsed-rule, result, history, and favorites processing.
+- Refuse keybind install or removal when managed markers are malformed or duplicated.
+
 ## 0.2.0
 
 - Add grouped output variants, deterministic search, match highlighting, complete keyboard navigation, and local opaque usage history.
