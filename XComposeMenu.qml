@@ -48,14 +48,18 @@ Item {
   property color scrim: Color.menu.scrim
   property color selectedBackground: Color.menu.selectedBackground
   property color selectedText: Color.menu.selectedText
+  property color selectedBorder: Color.menu.selectedBorder
+  property var selectedBorderSpec: Border.surfaceSpec("menu", "selected-border", selectedBorder, 0)
+  readonly property real rowReservedBorderLeft: Border.left(selectedBorderSpec)
+  readonly property real rowReservedBorderRight: Border.right(selectedBorderSpec)
   readonly property int cornerRadius: Style.cornerRadius
   property string fontFamily: Style.font.menuFamily
   property int contentMargin: Style.spacing.panelPadding
   property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
   property int contentSpacing: Style.spacing.md
-  property int rowHeight: Math.max(Style.space(64), Style.font.title + Style.font.caption + Style.spacing.md)
+  property int rowHeight: Math.max(Style.space(58), Style.font.heading + Style.font.caption + Style.spacing.rowPaddingX * 2)
   property int rowSpacing: Style.spacing.xs
-  property int cardWidth: Math.min(Style.space(560), panel.width - Style.gapsOut * 2)
+  property int cardWidth: Math.min(Style.space(520), panel.width - Style.gapsOut * 2)
   property int cardHeight: Math.min(Style.space(540), panel.height - Style.gapsOut * 2)
 
   function resolvePath(value) {
@@ -193,7 +197,7 @@ Item {
       var variantIndex = typeof savedIndex === "number" ? Math.max(0, Math.min(savedIndex, group.variants.length - 1)) : group.activeVariantIndex
       var variant = group.variants[variantIndex]
       var match = XComposeSearch.matchEntry(variant, XComposeSearch.normalize(filterText)) || { descriptionRanges: [], resultRanges: [], sequenceRanges: [] }
-      displayModel.append({ groupId: group.groupId, description: variant.descriptionPreview, descriptionMarkup: root.highlightMarkup(variant.descriptionPreview, match.descriptionRanges), previewMarkup: root.highlightMarkup(variant.valuePreview, match.resultRanges), sequenceMarkup: root.highlightMarkup(variant.sequencePreview, match.sequenceRanges), variants: group.variants.length, variantIndex: variantIndex, favorite: group.favorite })
+      displayModel.append({ groupId: group.groupId, description: variant.descriptionPreview, descriptionMarkup: root.highlightMarkup(variant.descriptionPreview, match.descriptionRanges), preview: variant.valuePreview, previewMarkup: root.highlightMarkup(variant.valuePreview, match.resultRanges), sequenceMarkup: root.highlightMarkup(variant.sequencePreview, match.sequenceRanges), variants: group.variants.length, variantIndex: variantIndex, favorite: group.favorite })
     }
     if (!displayModel.count) { selectedIndex = 0; previewOpen = false; clearPreview(); return }
     var restored = -1
@@ -352,17 +356,37 @@ Item {
         anchors.leftMargin: card.contentLeftInset
         spacing: root.contentSpacing
 
-        Text {
+        Item {
           width: parent.width
           height: root.headerHeight
-          verticalAlignment: Text.AlignVCenter
-          text: root.filterText ? root.filterDisplayText() : "Search XCompose shortcuts…"
-          textFormat: Text.PlainText
-          color: root.foreground
-          opacity: root.filterText ? 1 : 0.58
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.heading
-          elide: Text.ElideRight
+
+          Text {
+            id: searchIcon
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: Style.space(28)
+            text: "󰍉"
+            color: root.foreground
+            opacity: root.filterText ? 0.78 : 0.48
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.icon
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+          }
+
+          Text {
+            anchors.left: searchIcon.right
+            anchors.leftMargin: Style.spacing.sm
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.filterText ? root.filterDisplayText() : "Search XCompose shortcuts…"
+            textFormat: Text.PlainText
+            color: root.foreground
+            opacity: root.filterText ? 1 : 0.58
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.heading
+            elide: Text.ElideRight
+          }
         }
 
         Item {
@@ -378,9 +402,10 @@ Item {
             clip: true
             reuseItems: true
             boundsBehavior: Flickable.StopAtBounds
-            delegate: Rectangle {
+            delegate: BorderSurface {
               required property int index
               required property string descriptionMarkup
+              required property string preview
               required property string previewMarkup
               required property string sequenceMarkup
               required property int variants
@@ -390,21 +415,23 @@ Item {
               height: root.rowHeight
               radius: root.cornerRadius
               color: hasCursor ? root.selectedBackground : "transparent"
-              border.width: hasCursor ? 2 : 0
-              border.color: hasCursor ? root.selectedText : "transparent"
+              borderSpec: hasCursor ? root.selectedBorderSpec : Border.none()
               clip: true
               Item {
                 anchors.fill: parent
-                anchors.margins: Style.spacing.md
+                anchors.leftMargin: root.rowReservedBorderLeft + Style.space(8)
+                anchors.rightMargin: root.rowReservedBorderRight + Style.space(8)
+                anchors.topMargin: Style.spacing.sm
+                anchors.bottomMargin: Style.spacing.sm
                 Item {
                   id: labelCell
-                  anchors.left: favoriteCell.right; anchors.leftMargin: favorite ? Style.spacing.sm : 0; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: previewCell.left; anchors.rightMargin: Style.spacing.md
+                  anchors.left: favoriteCell.right; anchors.leftMargin: Style.spacing.sm; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: previewCell.left; anchors.rightMargin: Style.spacing.md
                   clip: true
                   Column {
                     width: parent.width
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: Style.spacing.xs
-                    Text { width: parent.width; text: descriptionMarkup; textFormat: Text.StyledText; color: hasCursor ? root.selectedText : root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.body; elide: Text.ElideRight; maximumLineCount: 1; wrapMode: Text.NoWrap }
+                    Text { width: parent.width; text: descriptionMarkup; textFormat: Text.StyledText; color: hasCursor ? root.selectedText : root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.heading; font.weight: Font.Medium; elide: Text.ElideRight; maximumLineCount: 1; wrapMode: Text.NoWrap }
                     Text { width: parent.width; text: sequenceMarkup + (variants > 1 ? "  •  " + variants + " variants" : ""); textFormat: Text.StyledText; color: hasCursor ? root.selectedText : root.foreground; opacity: 0.58; font.family: root.fontFamily; font.pixelSize: Style.font.caption; elide: Text.ElideRight; maximumLineCount: 1; wrapMode: Text.NoWrap }
                   }
                 }
@@ -420,7 +447,7 @@ Item {
                     textFormat: Text.PlainText
                     color: hasCursor ? root.selectedText : root.foreground
                     font.family: root.fontFamily
-                    font.pixelSize: Math.max(Style.font.title, Style.space(20))
+                    font.pixelSize: Style.font.icon
                     horizontalAlignment: Text.AlignLeft
                     verticalAlignment: Text.AlignVCenter
                   }
@@ -430,7 +457,7 @@ Item {
                   width: Math.min(Style.space(160), parent.width * 0.34)
                   anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
                   clip: true
-                  Text { anchors.fill: parent; text: previewMarkup; textFormat: Text.StyledText; color: hasCursor ? root.selectedText : root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.title; elide: Text.ElideRight; maximumLineCount: 1; wrapMode: Text.NoWrap; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter }
+                  Text { anchors.fill: parent; text: previewMarkup; textFormat: Text.StyledText; color: hasCursor ? root.selectedText : root.foreground; font.family: root.fontFamily; font.pixelSize: preview.length <= 3 ? Style.font.iconLarge : Style.font.title; elide: Text.ElideRight; maximumLineCount: 1; wrapMode: Text.NoWrap; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter }
                 }
               }
               MouseArea {

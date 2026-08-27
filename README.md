@@ -4,6 +4,14 @@ Search, inspect, and insert shortcuts from your personal XCompose file without l
 
 The picker reads `$XCOMPOSEFILE` when set, otherwise `~/.XCompose`. It indexes direct rules only, so system compose tables referenced with `include` never overwhelm personal shortcuts.
 
+## Preview
+
+![Preview](preview.png)
+
+## Demo
+
+![Demo](demo.gif)
+
 ## Features
 
 - Search descriptions, output, key names, compact sequences such as `rr`, and Compose tokens such as `<space> <e>`
