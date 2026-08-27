@@ -174,7 +174,9 @@ function isFavorite(favorites, id) {
 }
 
 function buildGroups(entries, history, favorites) {
-  var groups = {}
+  // Results are user-controlled XCompose strings. A null-prototype map keeps
+  // property names such as "constructor" and "__proto__" as ordinary keys.
+  var groups = Object.create(null)
   ;(entries || []).forEach(function(entry) {
     var key = entry.result
     if (!groups[key]) groups[key] = { groupId: "result:" + entry.id, result: entry.result, variants: [] }
@@ -210,7 +212,7 @@ function search(entries, query, history, favorites, limit) {
   }
 
   var composeQuery = composeTokenQuery(needle)
-  var matchedByResult = {}
+  var matchedByResult = Object.create(null)
   ;(entries || []).forEach(function(entry) {
     var match = matchEntryWithComposeQuery(entry, needle, composeQuery)
     if (!match) return
@@ -219,7 +221,7 @@ function search(entries, query, history, favorites, limit) {
     if (!current || candidate.match.score > current.match.score || (candidate.match.score === current.match.score && candidate.meta.lastUsed > current.meta.lastUsed)) matchedByResult[entry.result] = candidate
   })
 
-  var groupsByResult = {}
+  var groupsByResult = Object.create(null)
   Object.keys(matchedByResult).forEach(function(result) {
     var candidate = matchedByResult[result]
     groupsByResult[result] = { groupId: "result:" + candidate.entry.id, result: result, variants: [], candidate: candidate }

@@ -37,3 +37,8 @@ Results must be quoted strings. Actual Unicode text and `\\n`, `\\t`, `\\r`, `\\
 ```
 
 Malformed rules are skipped and reported in the picker. Duplicate sequences are warnings; one sequence producing multiple values is an error because XCompose behavior is ambiguous.
+
+For predictable shell responsiveness, the picker indexes at most a 1 MiB source,
+5,000 rules, and 4,096 characters per decoded result. Larger sources are not
+indexed; over-limit rules are skipped with a warning. Local history and favorites
+are each limited to 64 KiB and 100 entries.

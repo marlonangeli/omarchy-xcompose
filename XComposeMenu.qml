@@ -116,6 +116,13 @@ Item {
   }
 
   function loadCompose(raw) {
+    if (XComposeParser.exceedsSourceLimit(raw)) {
+      entries = []
+      diagnostics = [{ severity: "error", line: 0, code: "source-too-large", message: "XCompose file is too large to index" }]
+      composeLoadState = "ready"
+      rebuildDisplay()
+      return
+    }
     var parsed = XComposeParser.parse(raw, composePath)
     entries = parsed.entries
     diagnostics = parsed.diagnostics

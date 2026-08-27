@@ -35,4 +35,12 @@ env "${test_environment[@]}" "$project_dir/scripts/keybind" uninstall
 grep -Fq -- '-- existing bindings' "$test_root/home/.config/hypr/bindings.lua"
 [[ "$(find "$test_root/home/.config/hypr" -maxdepth 1 -type f -name 'bindings.lua.bak.*' | wc -l)" == 3 ]]
 
+printf '%s\n%s\n%s\n' '-- existing bindings' '-- omarchy-xcompose:start' 'o.bind("SUPER + Q", "XCompose picker", "omarchy-shell shell toggle dev.ilegna.xcompose")' >"$test_root/home/.config/hypr/bindings.lua"
+if env "${test_environment[@]}" "$project_dir/scripts/keybind" uninstall; then
+  printf 'expected uninstall to reject an unmatched start marker\n' >&2
+  exit 1
+fi
+grep -Fq -- '-- omarchy-xcompose:start' "$test_root/home/.config/hypr/bindings.lua"
+grep -Fq -- 'o.bind("SUPER + Q"' "$test_root/home/.config/hypr/bindings.lua"
+
 printf 'keybind tests passed\n'

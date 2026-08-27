@@ -35,6 +35,27 @@ without_managed_block() {
   ' "$bindings_file"
 }
 
+validate_managed_markers() {
+  awk -v start="$start_marker" -v end="$end_marker" '
+    $0 == start {
+      starts++
+      if (inside || starts > 1) exit 1
+      inside = 1
+      next
+    }
+    $0 == end {
+      ends++
+      if (!inside || ends > 1) exit 1
+      inside = 0
+    }
+    END { exit (starts == ends && starts <= 1 && !inside) ? 0 : 1 }
+  ' "$bindings_file"
+}
+
+ensure_managed_markers_are_valid() {
+  validate_managed_markers || fail "managed keybind markers are unbalanced or duplicated; refusing to modify $bindings_file"
+}
+
 next_backup_path() {
   local base candidate counter
   base="$bindings_file.bak.$(date -u +%Y%m%d%H%M%S)"
@@ -100,6 +121,7 @@ install_binding() {
 
   [[ "$binding" =~ ^[A-Za-z0-9_:+\ -]+$ ]] || fail "unsupported characters in binding: $binding"
   [[ -f "$bindings_file" ]] || fail "Hyprland bindings file not found: $bindings_file"
+  ensure_managed_markers_are_valid
 
   local backup temporary
   backup="$(next_backup_path)"
@@ -130,6 +152,7 @@ install_binding() {
 
 uninstall_binding() {
   [[ -f "$bindings_file" ]] || fail "Hyprland bindings file not found: $bindings_file"
+  ensure_managed_markers_are_valid
 
   if ! grep -Fxq -- "$start_marker" "$bindings_file"; then
     printf 'No managed omarchy-xcompose keybind found.\n'

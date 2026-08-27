@@ -3,6 +3,12 @@ function normalize(value) {
   try { return text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "") } catch (_) { return text }
 }
 
+var maxSourceLength = 1024 * 1024
+var maxEntries = 5000
+var maxResultLength = 4096
+
+function exceedsSourceLimit(raw) { return String(raw || "").length > maxSourceLength }
+
 function compactPreview(value, limit) {
   var text = String(value || "")
     .replace(/\r\n/g, "\n").replace(/\r/g, "\n")
@@ -109,11 +115,22 @@ function parseResult(rhs, line, diagnostics) {
     diagnostics.push({ severity: "warning", line: line, code: "invalid-result", message: "Expected a quoted XCompose result" })
     return null
   }
-  return { value: decodeEscapes(match[1], line, diagnostics), inlineComment: parts.comment }
+  if (match[1].length > maxResultLength) {
+    diagnostics.push({ severity: "warning", line: line, code: "result-too-long", message: "Ignored result longer than " + maxResultLength + " characters" })
+    return null
+  }
+  var value = decodeEscapes(match[1], line, diagnostics)
+  if (value.length > maxResultLength) {
+    diagnostics.push({ severity: "warning", line: line, code: "result-too-long", message: "Ignored result longer than " + maxResultLength + " characters" })
+    return null
+  }
+  return { value: value, inlineComment: parts.comment }
 }
 
 function parse(raw, source) {
-  var lines = String(raw || "").split(/\r?\n/)
+  var text = String(raw || "")
+  if (text.length > maxSourceLength) return { entries: [], diagnostics: [{ severity: "error", line: 0, code: "source-too-large", message: "XCompose file exceeds " + maxSourceLength + " characters" }], includes: [] }
+  var lines = text.split(/\r?\n/)
   var entries = []
   var diagnostics = []
   var comments = []
@@ -149,9 +166,13 @@ function parse(raw, source) {
     var valuePreview = compactPreview(result.value, 80)
     var sequencePreview = compactPreview(sequenceText, 120)
     var id = opaqueId(rawSequence.join("\u001f") + "\u001e" + result.value)
+    if (entries.length >= maxEntries) {
+      diagnostics.push({ severity: "warning", line: line, code: "entry-limit", message: "Ignored rules after " + maxEntries + " entries" })
+      break
+    }
     entries.push({ id: id, description: description, result: result.value, value: result.value, rawSequence: rawSequence, displaySequence: displaySequence, sequenceText: sequenceText, rawSequenceText: rawSequenceText, compactSequence: compactSequence, source: source || "", line: line, descriptionPreview: descriptionPreview, valuePreview: valuePreview, sequencePreview: sequencePreview, rawSequenceTokenIndexes: sequenceTokenIndexes(rawSequence, false), compactSequenceTokenIndexes: sequenceTokenIndexes(rawSequence, true), normalizedDescription: normalize(description), normalizedDescriptionPreview: normalize(descriptionPreview), normalizedResult: normalize(result.value), normalizedValuePreview: normalize(valuePreview), normalizedRawSequenceText: normalize(rawSequenceText), normalizedCompactSequence: normalize(compactSequence), normalizedSequencePreview: normalize(sequencePreview), normalizedSequence: normalize(rawSequenceText + " " + compactSequence + " " + sequenceText) })
   }
-  var bySequence = {}
+  var bySequence = Object.create(null)
   entries.forEach(function(entry) {
     var key = entry.rawSequence.join("\u001f")
     if (!bySequence[key]) bySequence[key] = entry

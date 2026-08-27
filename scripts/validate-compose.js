@@ -7,12 +7,17 @@ const path = require("node:path")
 const vm = require("node:vm")
 
 const composePath = process.argv[2]
+const maxSourceBytes = 1024 * 1024
 if (!composePath) {
   console.error("error: XCompose path is required")
   process.exit(2)
 }
 
 try {
+  if (fs.statSync(composePath).size > maxSourceBytes) {
+    console.error(`error: XCompose file exceeds ${maxSourceBytes} bytes`)
+    process.exit(2)
+  }
   const parserPath = path.resolve(__dirname, "..", "XComposeParser.js")
   const context = { console }
   vm.createContext(context)

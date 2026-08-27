@@ -50,6 +50,16 @@ assert.equal(longEntry.valuePreview.includes("\n"), false)
 assert.equal(longEntry.valuePreview.includes("↵"), true)
 assert.equal(longEntry.valuePreview.length <= 80, true)
 
+const tooLongResult = parser.parse(`<Multi_key> <l> : "${"x".repeat(parser.maxResultLength + 1)}"`)
+assert.equal(tooLongResult.entries.length, 0)
+assert.ok(tooLongResult.diagnostics.some(item => item.code === "result-too-long"))
+const tooLargeSource = parser.parse("x".repeat(parser.maxSourceLength + 1))
+assert.equal(tooLargeSource.entries.length, 0)
+assert.ok(tooLargeSource.diagnostics.some(item => item.code === "source-too-large"))
+const tooManyEntries = parser.parse(Array.from({ length: parser.maxEntries + 1 }, (_, index) => `<Multi_key> <a> <${index}> : "x"`).join("\n"))
+assert.equal(tooManyEntries.entries.length, parser.maxEntries)
+assert.ok(tooManyEntries.diagnostics.some(item => item.code === "entry-limit"))
+
 for (let index = 0; index < 200; index++) {
   const source = Array.from({ length: 30 }, () => String.fromCharCode(Math.floor(Math.random() * 128))).join("")
   assert.doesNotThrow(() => parser.parse(source))

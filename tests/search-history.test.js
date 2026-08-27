@@ -51,6 +51,13 @@ let rows = search.search(entries, "→", state, 100)
 assert.equal(rows.length, 1)
 assert.equal(rows[0].variants.length, 2)
 assert.equal(rows[0].result, "→")
+const inheritedKeys = parser.parse(`
+<Multi_key> <c> : "constructor"
+<Multi_key> <p> : "__proto__"
+`).entries
+assert.doesNotThrow(() => search.search(inheritedKeys, "", state, 100))
+assert.doesNotThrow(() => search.search(inheritedKeys, "constructor", state, 100))
+assert.deepEqual(Array.from(search.search(inheritedKeys, "", state, 100), row => row.result).sort(), ["__proto__", "constructor"])
 assert.equal(search.search(entries, "minus greater", state, 100)[0].result, "→")
 assert.equal(search.search(entries, "rr", state, 100)[0].result, "→")
 assert.equal(search.search(entries, "arw rgt", state, 100)[0].result, "→")
@@ -88,5 +95,16 @@ assert.deepEqual(Array.from(minusMatch.sequenceRanges, function(range) { return 
 assert.ok(tokenMatch.sequenceRanges.length > 0)
 assert.equal(multilineEntry.valuePreview, "first ↵ needle")
 assert.deepEqual(Array.from(multilineMatch.resultRanges, function(range) { return range.start }), [0, 1, 2, 3, 4, 5].map(function(offset) { return multilineEntry.valuePreview.indexOf("needle") + offset }))
+assert.equal(history.parse("x".repeat(history.maxStateLength + 1)).entries && Object.keys(history.parse("x".repeat(history.maxStateLength + 1)).entries).length, 0)
+assert.equal(favorites.parse("x".repeat(favorites.maxStateLength + 1)).ids && Object.keys(favorites.parse("x".repeat(favorites.maxStateLength + 1)).ids).length, 0)
+const manyHistoryEntries = {}
+const manyFavoriteIds = {}
+for (let index = 0; index < 101; index++) {
+  const id = `x${index.toString(16).padStart(16, "0")}`
+  manyHistoryEntries[id] = { count: 1, lastUsed: index }
+  manyFavoriteIds[id] = true
+}
+assert.equal(Object.keys(history.parse(JSON.stringify({ schemaVersion: 1, entries: manyHistoryEntries })).entries).length, history.maxStateEntries)
+assert.equal(Object.keys(favorites.parse(JSON.stringify({ schemaVersion: 1, ids: manyFavoriteIds })).ids).length, favorites.maxStateEntries)
 
 console.log("search/history tests passed")

@@ -1,13 +1,17 @@
 var schemaVersion = 1
+var maxStateLength = 64 * 1024
+var maxStateEntries = 100
 
 function empty() { return { schemaVersion: schemaVersion, ids: {} } }
 
 function parse(raw) {
   try {
-    var value = JSON.parse(String(raw || ""))
+    var text = String(raw || "")
+    if (text.length > maxStateLength) return empty()
+    var value = JSON.parse(text)
     if (!value || value.schemaVersion !== schemaVersion || !value.ids || typeof value.ids !== "object") return empty()
     var ids = {}
-    Object.keys(value.ids).forEach(function(id) {
+    Object.keys(value.ids).slice(0, maxStateEntries).forEach(function(id) {
       if (/^x[0-9a-f]{16}$/.test(id) && value.ids[id] === true) ids[id] = true
     })
     return { schemaVersion: schemaVersion, ids: ids }
