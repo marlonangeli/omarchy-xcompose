@@ -23,6 +23,8 @@ Item {
   readonly property string stateDir: xdgStateHome + "/omarchy"
   readonly property string historyPath: stateDir + "/xcompose-history.json"
   readonly property string favoritesPath: stateDir + "/xcompose-favorites.json"
+  readonly property int maxComposeBytes: 1024 * 1024
+  readonly property int maxStateBytes: 64 * 1024
 
   property string composePath: ""
   property string composeLoadState: "loading"
@@ -83,7 +85,7 @@ Item {
     variantSelections = ({})
     opened = true
     composeLoadState = "loading"
-    composeFile.reload()
+    readCompose()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
@@ -142,6 +144,27 @@ Item {
   function loadFavorites(raw) {
     favorites = XComposeFavorites.parse(raw)
     if (opened) rebuildDisplay()
+  }
+
+  function startBoundedRead(process, path, limit) {
+    process.nextPath = path
+    process.nextLimit = limit
+    if (process.running) { process.pending = true; return }
+    process.pending = false
+    process.output = ""
+    process.command = ["node", pluginDir + "/scripts/read-bounded.js", path, String(limit)]
+    process.running = true
+  }
+
+  function readCompose() { startBoundedRead(composeRead, composePath, maxComposeBytes) }
+  function readFavorites() { startBoundedRead(favoritesRead, favoritesPath, maxStateBytes) }
+  function readHistory() { startBoundedRead(historyRead, historyPath, maxStateBytes) }
+
+  function composeReadFailed(exitCode) {
+    composeLoadState = exitCode === 3 ? "missing" : "invalid"
+    entries = []
+    diagnostics = exitCode === 3 ? [] : [{ severity: "error", line: 0, code: "unreadable-source", message: "XCompose path must be a regular file within the size limit" }]
+    rebuildDisplay()
   }
 
   function saveFavorites() {
@@ -269,42 +292,107 @@ Item {
 
   FileView {
     id: composeFile
-    path: root.composePath
+    blockLoading: true
+    blockAllReads: true
+    preload: false
     watchChanges: true
+    path: root.composePath
     printErrors: false
-    onLoaded: root.loadCompose(text())
-    onFileChanged: reload()
-    onLoadFailed: { root.composeLoadState = "missing"; root.entries = []; root.diagnostics = []; root.rebuildDisplay() }
+    onFileChanged: root.readCompose()
   }
 
   FileView {
     id: favoritesFile
-    path: root.favoritesPath
+    blockLoading: true
+    blockAllReads: true
+    preload: false
     watchChanges: true
+    path: root.favoritesPath
     atomicWrites: true
     printErrors: false
-    onLoaded: root.loadFavorites(text())
-    onLoadFailed: root.favorites = XComposeFavorites.empty()
+    onFileChanged: root.readFavorites()
   }
 
   FileView {
     id: historyFile
-    path: root.historyPath
+    blockLoading: true
+    blockAllReads: true
+    preload: false
     watchChanges: true
+    path: root.historyPath
     atomicWrites: true
     printErrors: false
-    onLoaded: root.loadHistory(text())
-    onLoadFailed: root.history = XComposeHistory.empty()
+    onFileChanged: root.readHistory()
+  }
+
+  Process {
+    id: composeRead
+    running: false
+    property string output: ""
+    property string nextPath: ""
+    property int nextLimit: 0
+    property bool pending: false
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: composeRead.output = text }
+    onExited: function(exitCode) {
+      if (pending) {
+        var path = nextPath, limit = nextLimit
+        pending = false
+        Qt.callLater(function() { root.startBoundedRead(composeRead, path, limit) })
+        return
+      }
+      if (exitCode === 0) root.loadCompose(output); else root.composeReadFailed(exitCode)
+    }
+  }
+
+  Process {
+    id: favoritesRead
+    running: false
+    property string output: ""
+    property string nextPath: ""
+    property int nextLimit: 0
+    property bool pending: false
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: favoritesRead.output = text }
+    onExited: function(exitCode) {
+      if (pending) {
+        var path = nextPath, limit = nextLimit
+        pending = false
+        Qt.callLater(function() { root.startBoundedRead(favoritesRead, path, limit) })
+        return
+      }
+      root.loadFavorites(exitCode === 0 ? output : "")
+    }
+  }
+
+  Process {
+    id: historyRead
+    running: false
+    property string output: ""
+    property string nextPath: ""
+    property int nextLimit: 0
+    property bool pending: false
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: historyRead.output = text }
+    onExited: function(exitCode) {
+      if (pending) {
+        var path = nextPath, limit = nextLimit
+        pending = false
+        Qt.callLater(function() { root.startBoundedRead(historyRead, path, limit) })
+        return
+      }
+      root.loadHistory(exitCode === 0 ? output : "")
+    }
   }
 
   Timer {
     interval: 1000
     repeat: true
     running: root.opened && root.composeLoadState === "missing"
-    onTriggered: composeFile.reload()
+    onTriggered: root.readCompose()
   }
 
-  Component.onCompleted: Quickshell.execDetached(["mkdir", "-p", stateDir])
+  Component.onCompleted: {
+    Quickshell.execDetached(["mkdir", "-p", stateDir])
+    Qt.callLater(function() { root.readFavorites(); root.readHistory() })
+  }
 
   PanelWindow {
     id: panel

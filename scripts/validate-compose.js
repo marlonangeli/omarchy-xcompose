@@ -3,6 +3,7 @@
 "use strict"
 
 const fs = require("node:fs")
+const childProcess = require("node:child_process")
 const path = require("node:path")
 const vm = require("node:vm")
 
@@ -14,15 +15,18 @@ if (!composePath) {
 }
 
 try {
-  if (fs.statSync(composePath).size > maxSourceBytes) {
-    console.error(`error: XCompose file exceeds ${maxSourceBytes} bytes`)
+  const readerPath = path.resolve(__dirname, "read-bounded.js")
+  const read = childProcess.spawnSync(process.execPath, [readerPath, composePath, String(maxSourceBytes)], { encoding: "buffer", maxBuffer: maxSourceBytes + 1024 })
+  if (read.error || read.status !== 0) {
+    const reason = read.stderr ? read.stderr.toString("utf8").trim() : "unable to read XCompose file"
+    console.error(`error: ${reason}`)
     process.exit(2)
   }
   const parserPath = path.resolve(__dirname, "..", "XComposeParser.js")
   const context = { console }
   vm.createContext(context)
   vm.runInContext(fs.readFileSync(parserPath, "utf8"), context, { filename: parserPath })
-  const parsed = context.parse(fs.readFileSync(composePath, "utf8"), composePath)
+  const parsed = context.parse(read.stdout.toString("utf8"), composePath)
   const duplicates = parsed.diagnostics.filter(diagnostic => diagnostic.code === "duplicate-sequence" || diagnostic.code === "conflicting-sequence")
 
   if (!duplicates.length) {

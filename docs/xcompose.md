@@ -42,3 +42,7 @@ For predictable shell responsiveness, the picker indexes at most a 1 MiB source,
 5,000 rules, and 4,096 characters per decoded result. Larger sources are not
 indexed; over-limit rules are skipped with a warning. Local history and favorites
 are each limited to 64 KiB and 100 entries.
+
+Before loading, the picker accepts only regular files and rejects symbolic links,
+FIFOs, and other special paths. This prevents a configured path from blocking or
+retaining unbounded data in the shell process.

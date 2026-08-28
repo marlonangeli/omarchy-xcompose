@@ -20,17 +20,13 @@ ok() { printf 'ok: %s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*"; }
 fail() { printf 'error: %s\n' "$*" >&2; errors=1; }
 
-for command_name in omarchy omarchy-shell wl-copy wtype; do
+for command_name in omarchy omarchy-shell wl-copy wtype node; do
   if command -v "$command_name" >/dev/null 2>&1; then ok "$command_name found"; else fail "$command_name is required"; fi
 done
 
 if [[ -r "$compose_path" ]]; then
   ok "XCompose file is readable: $compose_path"
-  if command -v node >/dev/null 2>&1; then
-    if ! node "$plugin_dir/scripts/validate-compose.js" "$compose_path"; then errors=1; fi
-  else
-    warn "node not found; duplicate sequence validation skipped"
-  fi
+  if ! node "$plugin_dir/scripts/validate-compose.js" "$compose_path"; then errors=1; fi
 else
   fail "XCompose file is not readable: $compose_path"
 fi

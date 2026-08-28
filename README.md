@@ -26,7 +26,7 @@ The picker reads `$XCOMPOSEFILE` when set, otherwise `~/.XCompose`. It indexes d
 ## Requirements
 
 - Omarchy Quattro with shell plugin support
-- `wl-clipboard` and `wtype`
+- `wl-clipboard`, `wtype`, and Node.js (for bounded local-file reads)
 - `~/.XCompose`, or an `XCOMPOSEFILE` environment variable
 
 ## Install
