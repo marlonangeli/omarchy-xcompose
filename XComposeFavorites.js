@@ -1,5 +1,6 @@
 var schemaVersion = 1
 var maxStateLength = 64 * 1024
+var maxStateBytes = maxStateLength
 var maxStateEntries = 100
 
 function empty() { return { schemaVersion: schemaVersion, ids: {} } }

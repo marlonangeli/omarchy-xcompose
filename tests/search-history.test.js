@@ -61,6 +61,10 @@ assert.deepEqual(Array.from(search.search(inheritedKeys, "", state, 100), row =>
 assert.equal(search.search(entries, "minus greater", state, 100)[0].result, "→")
 assert.equal(search.search(entries, "rr", state, 100)[0].result, "→")
 assert.equal(search.search(entries, "arw rgt", state, 100)[0].result, "→")
+assert.equal(search.search(entries, "arrow right", state, 100, { fuzzy: true })[0].result, "→")
+assert.equal(search.search(entries, "arw rgt", state, 100, { fuzzy: false }).length, 0)
+assert.equal(search.search(entries, "arrow right", state, 100, { fuzzy: false })[0].result, "→")
+assert.equal(search.matchEntry(entries[0], "arw rgt", { fuzzy: false }), null)
 assert.equal(search.search(entries, "<space> <e>", state, 100)[0].result, "€")
 assert.equal(search.search(entries, "<space> <space>", state, 100)[0].result, "Double space")
 assert.deepEqual(Array.from(search.composeTokenQuery("<space> <space>").tokens), ["space", "space"])
@@ -95,6 +99,51 @@ assert.deepEqual(Array.from(minusMatch.sequenceRanges, function(range) { return 
 assert.ok(tokenMatch.sequenceRanges.length > 0)
 assert.equal(multilineEntry.valuePreview, "first ↵ needle")
 assert.deepEqual(Array.from(multilineMatch.resultRanges, function(range) { return range.start }), [0, 1, 2, 3, 4, 5].map(function(offset) { return multilineEntry.valuePreview.indexOf("needle") + offset }))
+const tagged = parser.parse(`
+# Arrow right @tags: navigation, unicode @alias: seta
+<Multi_key> <r> <r> : "→"
+# Em dash @tags: punctuation @alias: emdash, travessão
+<Multi_key> <space> <space> : "—"
+# Secret @sensitive
+<Multi_key> <p> : "hunter2"
+`).entries
+assert.equal(search.search(tagged, "#navigation", state, 100)[0].result, "→")
+assert.equal(search.search(tagged, "#punctuation", state, 100)[0].result, "—")
+assert.equal(search.search(tagged, "#missing", state, 100).length, 0)
+assert.equal(search.search(tagged, "#navigation arrow", state, 100)[0].result, "→")
+assert.equal(search.search(tagged, "#navigation emdash", state, 100).length, 0)
+assert.equal(search.search(tagged, "seta", state, 100)[0].result, "→")
+assert.equal(search.search(tagged, "emdash", state, 100)[0].result, "—")
+assert.equal(search.search(tagged, "travessão", state, 100)[0].result, "—")
+assert.equal(search.search(tagged, "unicode", state, 100)[0].result, "→")
+assert.equal(search.search(tagged, "hunter2", state, 100)[0].result, "hunter2")
+assert.equal(search.search(tagged, "secret", state, 100)[0].result, "hunter2")
+assert.equal(search.search(tagged, "#secret", state, 100).length, 0)
+assert.equal(search.search(tagged, "", state, 100).length, 3)
+assert.equal(search.matchEntry(tagged[0], "#navigation", { fuzzy: false }).score > 0, true)
+assert.equal(search.matchEntry(tagged[0], "#nav", { fuzzy: false }), null)
+assert.deepEqual(JSON.parse(JSON.stringify(search.tagQuery("#navigation arrow"))), { tag: "navigation", remaining: "arrow" })
+assert.equal(search.tagQuery("#"), null)
+
+const rangeRows = search.search(entries, "arrow", state, 100)
+assert.ok(rangeRows[0].descriptionRanges.length > 0)
+assert.deepEqual(Array.from(rangeRows[0].resultRanges), [])
+assert.deepEqual(Array.from(rangeRows[0].sequenceRanges), [])
+const resultRows = search.search(entries, "→", state, 100)
+assert.ok(resultRows[0].resultRanges.length > 0)
+const sequenceRows = search.search(entries, "rr", state, 100)
+assert.ok(sequenceRows[0].sequenceRanges.length > 0)
+const emptyRows = search.search(entries, "", state, 100)
+assert.deepEqual(Array.from(emptyRows[0].descriptionRanges), [])
+assert.deepEqual(Array.from(emptyRows[0].resultRanges), [])
+assert.deepEqual(Array.from(emptyRows[0].sequenceRanges), [])
+for (const text of ["", "Arrow", "→", "Café", "Ünïcödé", "Multi_key rr", "  spaced  ", "ﬁne ﬂow", "ß", "ÅNGSTRÖM", "①②③"]) {
+  assert.equal(parser.normalize(text), search.normalize(text))
+}
+assert.equal(parser.maxSourceBytes, parser.maxSourceLength)
+assert.equal(history.maxStateBytes, history.maxStateLength)
+assert.equal(favorites.maxStateBytes, favorites.maxStateLength)
+assert.equal(history.maxStateBytes, favorites.maxStateBytes)
 assert.equal(history.parse("x".repeat(history.maxStateLength + 1)).entries && Object.keys(history.parse("x".repeat(history.maxStateLength + 1)).entries).length, 0)
 assert.equal(favorites.parse("x".repeat(favorites.maxStateLength + 1)).ids && Object.keys(favorites.parse("x".repeat(favorites.maxStateLength + 1)).ids).length, 0)
 const manyHistoryEntries = {}

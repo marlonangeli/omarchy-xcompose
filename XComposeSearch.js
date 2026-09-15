@@ -1,5 +1,6 @@
 function normalize(value) {
-  var text = String(value || "").toLocaleLowerCase()
+  var text = String(value || "").toLowerCase()
+  if (text.length < 256 && !/[^\x00-\x7f]/.test(text)) return text
   try { return text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "") } catch (_) { return text }
 }
 
@@ -27,12 +28,13 @@ function fuzzyMatch(text, needle) {
   return positions
 }
 
-function matchField(field, query, fieldWeight) {
+function matchField(field, query, fieldWeight, fuzzyAllowed) {
   if (!query) return { score: 0, positions: [] }
   var at = field.indexOf(query)
   if (at === 0 && field.length === query.length) return { score: 4000 + fieldWeight, positions: Array.from({ length: query.length }, function(_, i) { return i }) }
   if (at === 0) return { score: 3000 + fieldWeight, positions: Array.from({ length: query.length }, function(_, i) { return i }) }
   if (at >= 0) return { score: 2000 + fieldWeight - at, positions: Array.from({ length: query.length }, function(_, i) { return at + i }) }
+  if (fuzzyAllowed === false) return null
   var fuzzy = fuzzyMatch(field, query)
   return fuzzy ? { score: 1000 + fieldWeight + fuzzy.length, positions: fuzzy } : null
 }
@@ -112,13 +114,16 @@ function matchComposeTokens(entry, tokens) {
   return { score: 5000 + tokens.length * 10, sequenceRanges: sequenceTokenRanges(entry, matchedIndexes) }
 }
 
-function matchHeuristics(entry, query) {
+function matchHeuristics(entry, query, options) {
   if (!query) return { score: 0, descriptionRanges: [], resultRanges: [], sequenceRanges: [] }
+  var fuzzyAllowed = !options || options.fuzzy !== false
   var rawSequence = sequenceSearchField(entry, false)
   var compactSequence = sequenceSearchField(entry, true)
   var fields = [
     { value: entry.normalizedValuePreview || normalize(entry.valuePreview || entry.result), weight: 50, target: "result" },
+    { value: entry.normalizedAliases || "", weight: 47, target: "none" },
     { value: entry.normalizedDescriptionPreview || normalize(entry.descriptionPreview || entry.description), weight: 45, target: "description" },
+    { value: entry.normalizedTags || "", weight: 35, target: "none" },
     { value: rawSequence.value, weight: 30, target: "sequence", tokenIndexes: rawSequence.tokenIndexes },
     { value: compactSequence.value, weight: 25, target: "sequence", tokenIndexes: compactSequence.tokenIndexes },
     { value: entry.normalizedSequencePreview || normalize(entry.sequencePreview), weight: 20, target: "sequence" }
@@ -127,9 +132,9 @@ function matchHeuristics(entry, query) {
   var highlights = { descriptionRanges: [], resultRanges: [], sequenceRanges: [] }
   var highlightScores = { description: -1, result: -1, sequence: -1 }
   fields.forEach(function(field) {
-    var match = matchField(field.value, query, field.weight)
+    var match = matchField(field.value, query, field.weight, fuzzyAllowed)
     if (!match) return
-    if (match.score > highlightScores[field.target]) {
+    if (field.target !== "none" && match.score > highlightScores[field.target]) {
       highlightScores[field.target] = match.score
       if (field.target === "description") highlights.descriptionRanges = rangesFromPositions(match.positions)
       else if (field.target === "result") highlights.resultRanges = rangesFromPositions(match.positions)
@@ -146,11 +151,11 @@ function matchHeuristics(entry, query) {
   return { score: best.score, descriptionRanges: highlights.descriptionRanges, resultRanges: highlights.resultRanges, sequenceRanges: highlights.sequenceRanges }
 }
 
-function matchEntryWithComposeQuery(entry, query, composeQuery) {
-  if (!composeQuery) return matchHeuristics(entry, query)
+function matchEntryWithComposeQuery(entry, query, composeQuery, options) {
+  if (!composeQuery) return matchHeuristics(entry, query, options)
   var tokenMatch = matchComposeTokens(entry, composeQuery.tokens)
   if (!tokenMatch) return null
-  var heuristicMatch = matchHeuristics(entry, composeQuery.remaining)
+  var heuristicMatch = matchHeuristics(entry, composeQuery.remaining, options)
   if (!heuristicMatch && composeQuery.remaining) return null
   return {
     score: tokenMatch.score + (heuristicMatch ? heuristicMatch.score : 0),
@@ -160,8 +165,31 @@ function matchEntryWithComposeQuery(entry, query, composeQuery) {
   }
 }
 
-function matchEntry(entry, query) {
-  return matchEntryWithComposeQuery(entry, query, composeTokenQuery(query))
+function tagQuery(query) {
+  var match = String(query || "").match(/^#([^\s#]+)(?:\s+(.*))?$/)
+  if (!match) return null
+  return { tag: normalize(match[1]), remaining: match[2] ? match[2].trim() : "" }
+}
+
+function entryHasTag(entry, tag) {
+  var list = entry && entry.tagList ? entry.tagList : []
+  for (var index = 0; index < list.length; index++) if (list[index] === tag) return true
+  return false
+}
+
+function matchQuery(entry, query, options) {
+  var tag = tagQuery(query)
+  if (!tag) return matchEntryWithComposeQuery(entry, query, composeTokenQuery(query), options)
+  if (!entryHasTag(entry, tag.tag)) return null
+  if (!tag.remaining) return { score: 5000, descriptionRanges: [], resultRanges: [], sequenceRanges: [] }
+  var match = matchEntryWithComposeQuery(entry, tag.remaining, composeTokenQuery(tag.remaining), options)
+  if (!match) return null
+  match.score += 5000
+  return match
+}
+
+function matchEntry(entry, query, options) {
+  return matchQuery(entry, normalize(query), options)
 }
 
 function historyMeta(history, id) {
@@ -171,6 +199,10 @@ function historyMeta(history, id) {
 
 function isFavorite(favorites, id) {
   return !!(favorites && favorites.ids && favorites.ids[id] === true)
+}
+
+function entryLabel(entry) {
+  return entry && (entry.name || entry.description) || ""
 }
 
 function buildGroups(entries, history, favorites) {
@@ -184,7 +216,7 @@ function buildGroups(entries, history, favorites) {
   })
   return Object.keys(groups).map(function(key) {
     var group = groups[key]
-    group.variants.sort(function(a, b) { return compareText(a.description, b.description) || compareText(a.sequenceText, b.sequenceText) })
+    group.variants.sort(function(a, b) { return compareText(entryLabel(a), entryLabel(b)) || compareText(a.sequenceText, b.sequenceText) })
     group.history = group.variants.reduce(function(best, entry) {
       var meta = historyMeta(history, entry.id)
       return meta.lastUsed > best.lastUsed || (meta.lastUsed === best.lastUsed && meta.count > best.count) ? meta : best
@@ -199,45 +231,42 @@ function compareGroups(a, b) {
   if (a.favorite !== b.favorite) return a.favorite ? -1 : 1
   if (b.history.lastUsed !== a.history.lastUsed) return b.history.lastUsed - a.history.lastUsed
   if (b.history.count !== a.history.count) return b.history.count - a.history.count
-  return compareText(a.variants[a.activeVariantIndex].description, b.variants[b.activeVariantIndex].description) || compareText(a.variants[a.activeVariantIndex].sequenceText, b.variants[b.activeVariantIndex].sequenceText)
+  return compareText(entryLabel(a.variants[a.activeVariantIndex]), entryLabel(b.variants[b.activeVariantIndex])) || compareText(a.variants[a.activeVariantIndex].sequenceText, b.variants[b.activeVariantIndex].sequenceText)
 }
 
-function search(entries, query, history, favorites, limit) {
-  if (typeof favorites === "number") { limit = favorites; favorites = null }
+function search(entries, query, history, favorites, limit, options) {
+  if (typeof favorites === "number") { options = limit; limit = favorites; favorites = null }
   var needle = normalize(query)
   if (!needle) {
     return buildGroups(entries, history, favorites).map(function(group) {
-      return { groupId: group.groupId, result: group.result, variants: group.variants, activeVariantIndex: 0, score: 0, history: group.history, favorite: group.favorite, descriptionRanges: [] }
+      return { groupId: group.groupId, result: group.result, variants: group.variants, activeVariantIndex: 0, score: 0, history: group.history, favorite: group.favorite, descriptionRanges: [], resultRanges: [], sequenceRanges: [] }
     }).sort(compareGroups).slice(0, limit || 100)
   }
 
-  var composeQuery = composeTokenQuery(needle)
-  var matchedByResult = Object.create(null)
+  var candidateByResult = Object.create(null)
+  var variantsByResult = Object.create(null)
   ;(entries || []).forEach(function(entry) {
-    var match = matchEntryWithComposeQuery(entry, needle, composeQuery)
+    var variants = variantsByResult[entry.result]
+    if (!variants) variants = variantsByResult[entry.result] = []
+    variants.push(entry)
+    var match = matchQuery(entry, needle, options)
     if (!match) return
     var candidate = { entry: entry, match: match, meta: historyMeta(history, entry.id) }
-    var current = matchedByResult[entry.result]
-    if (!current || candidate.match.score > current.match.score || (candidate.match.score === current.match.score && candidate.meta.lastUsed > current.meta.lastUsed)) matchedByResult[entry.result] = candidate
+    var current = candidateByResult[entry.result]
+    if (!current || candidate.match.score > current.match.score || (candidate.match.score === current.match.score && candidate.meta.lastUsed > current.meta.lastUsed)) candidateByResult[entry.result] = candidate
   })
 
-  var groupsByResult = Object.create(null)
-  Object.keys(matchedByResult).forEach(function(result) {
-    var candidate = matchedByResult[result]
-    groupsByResult[result] = { groupId: "result:" + candidate.entry.id, result: result, variants: [], candidate: candidate }
-  })
-  ;(entries || []).forEach(function(entry) { if (groupsByResult[entry.result]) groupsByResult[entry.result].variants.push(entry) })
-
-  var groups = Object.keys(groupsByResult).map(function(result) {
-    var group = groupsByResult[result]
-    group.variants.sort(function(a, b) { return compareText(a.description, b.description) || compareText(a.sequenceText, b.sequenceText) })
-    var active = group.variants.indexOf(group.candidate.entry)
-    group.history = group.variants.reduce(function(best, entry) {
+  var groups = Object.keys(candidateByResult).map(function(result) {
+    var candidate = candidateByResult[result]
+    var variants = variantsByResult[result]
+    variants.sort(function(a, b) { return compareText(entryLabel(a), entryLabel(b)) || compareText(a.sequenceText, b.sequenceText) })
+    var active = variants.indexOf(candidate.entry)
+    var groupHistory = variants.reduce(function(best, entry) {
       var meta = historyMeta(history, entry.id)
       return meta.lastUsed > best.lastUsed || (meta.lastUsed === best.lastUsed && meta.count > best.count) ? meta : best
     }, { count: 0, lastUsed: 0 })
-    group.favorite = group.variants.some(function(entry) { return isFavorite(favorites, entry.id) })
-    return { groupId: group.groupId, result: group.result, variants: group.variants, activeVariantIndex: active < 0 ? 0 : active, score: group.candidate.match.score, history: group.history, favorite: group.favorite, descriptionRanges: group.candidate.match.descriptionRanges }
+    var favorite = variants.some(function(entry) { return isFavorite(favorites, entry.id) })
+    return { groupId: "result:" + candidate.entry.id, result: result, variants: variants, activeVariantIndex: active < 0 ? 0 : active, score: candidate.match.score, history: groupHistory, favorite: favorite, descriptionRanges: candidate.match.descriptionRanges, resultRanges: candidate.match.resultRanges, sequenceRanges: candidate.match.sequenceRanges }
   })
   return groups.sort(compareGroups).slice(0, limit || 100)
 }
