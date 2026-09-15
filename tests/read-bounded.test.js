@@ -21,11 +21,25 @@ try {
 
   const link = path.join(root, "link")
   fs.symlinkSync(regular, link)
-  assert.equal(read(link, 7).status, 4)
+  const linkRead = read(link, 7)
+  assert.equal(linkRead.status, 0, linkRead.stderr)
+  assert.equal(linkRead.stdout, "compose")
 
   const fifo = path.join(root, "fifo")
   childProcess.execFileSync("mkfifo", [fifo])
   assert.equal(read(fifo, 7).status, 4)
+
+  const fifoLink = path.join(root, "fifo-link")
+  fs.symlinkSync(fifo, fifoLink)
+  assert.equal(read(fifoLink, 7).status, 4)
+
+  const loopA = path.join(root, "loop-a")
+  const loopB = path.join(root, "loop-b")
+  fs.symlinkSync(loopB, loopA)
+  fs.symlinkSync(loopA, loopB)
+  assert.equal(read(loopA, 7).status, 4)
+
+  assert.equal(read(path.join(root, "missing"), 7).status, 3)
 } finally {
   fs.rmSync(root, { recursive: true, force: true })
 }
