@@ -9,6 +9,8 @@ import "XComposeParser.js" as XComposeParser
 import "XComposeSearch.js" as XComposeSearch
 import "XComposeHistory.js" as XComposeHistory
 import "XComposeFavorites.js" as XComposeFavorites
+import "XComposeConfig.js" as XComposeConfig
+import "XComposeViewModel.js" as XComposeViewModel
 
 Item {
   id: root
@@ -23,18 +25,37 @@ Item {
   readonly property string stateDir: xdgStateHome + "/omarchy"
   readonly property string historyPath: stateDir + "/xcompose-history.json"
   readonly property string favoritesPath: stateDir + "/xcompose-favorites.json"
-  readonly property int maxComposeBytes: 1024 * 1024
-  readonly property int maxStateBytes: 64 * 1024
+  readonly property string configHome: Quickshell.env("XDG_CONFIG_HOME") || home + "/.config"
+  readonly property string configPath: Quickshell.env("XCOMPOSE_PICKER_CONFIG") || configHome + "/omarchy-xcompose/config.json"
+  readonly property string runtimeDir: Quickshell.env("XDG_RUNTIME_DIR") || stateDir
+  readonly property string secretDir: runtimeDir + "/xcompose"
+  readonly property string secretPath: secretDir + "/pending"
+  property string pendingSecret: ""
+  property bool pendingCopy: false
+  readonly property int maxComposeBytes: XComposeParser.maxSourceBytes
+  readonly property int maxStateBytes: XComposeHistory.maxStateBytes
+  readonly property int maxConfigBytes: XComposeConfig.maxConfigLength
 
   property string composePath: ""
   property string composeLoadState: "loading"
+  property string composeSourceName: ""
+  property string composeSourceOrigin: ""
+  property string sourceError: ""
+  property var config: XComposeConfig.empty()
+  property var configDiagnostics: []
+  property string configLoadState: "loading"
+  property var pendingPayload: ({})
   property bool opened: false
   property string filterText: ""
   property int selectedIndex: 0
   property bool previewOpen: false
+  property bool diagnosticsOpen: false
+  property bool revealSensitive: false
   property string previewDescription: ""
   property string previewSequence: ""
   property string previewResult: ""
+  property string previewTags: ""
+  property string previewSource: ""
   property int previewLine: 0
   property var entries: []
   property var diagnostics: []
@@ -64,29 +85,57 @@ Item {
   property int cardWidth: Math.min(Style.space(520), panel.width - Style.gapsOut * 2)
   property int cardHeight: Math.min(Style.space(540), panel.height - Style.gapsOut * 2)
 
-  function resolvePath(value) {
-    var path = String(value || "").trim()
-    if (!path) path = Quickshell.env("XCOMPOSEFILE") || home + "/.XCompose"
-    if (path.indexOf("~/") === 0) return home + path.substring(1)
-    if (path.charAt(0) === "/") return path
-    return home + "/" + path
+  function environment() {
+    return { HOME: home, XCOMPOSEFILE: Quickshell.env("XCOMPOSEFILE") }
   }
 
   function open(payloadJson) {
     var payload = ({})
     try { payload = JSON.parse(payloadJson || "{}") } catch (_) { payload = ({}) }
-    composePath = resolvePath(typeof payload.path === "string" ? payload.path : "")
+    if (!XComposeConfig.isObject(payload)) payload = ({})
+    pendingPayload = payload
     filterText = ""
     selectedIndex = 0
     previewOpen = false
+    diagnosticsOpen = false
+    revealSensitive = false
     clearPreview()
     filteredGroups = []
     displayModel.clear()
     variantSelections = ({})
     opened = true
     composeLoadState = "loading"
-    readCompose()
+    if (configLoadState === "ready" || configLoadState === "defaults") applyOpen()
+    else if (configLoadState !== "loading") readConfig()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  function applyOpen() {
+    var selection = XComposeConfig.selectSource(config, pendingPayload, environment())
+    composeSourceName = selection.name
+    composeSourceOrigin = selection.origin
+    if (!selection.found) {
+      composePath = ""
+      entries = []
+      diagnostics = []
+      sourceError = "Unknown compose source: " + selection.name
+      composeLoadState = "invalid"
+      rebuildDisplay()
+      return
+    }
+    if (selection.origin === "payload" && !config.security.allowExternalPaths && !XComposeConfig.pathAllowed(selection.path, allowedRoots())) {
+      composePath = selection.path
+      entries = []
+      diagnostics = []
+      sourceError = "Path outside the allowed roots"
+      composeLoadState = "invalid"
+      rebuildDisplay()
+      return
+    }
+    sourceError = ""
+    composePath = selection.path
+    composeLoadState = "loading"
+    readCompose()
   }
 
   function close() { opened = false }
@@ -96,39 +145,28 @@ Item {
     if (shell && typeof shell.hide === "function") shell.hide(pluginId)
   }
 
-  function escapeMarkup(value) {
-    return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;")
-  }
-
-  function highlightMarkup(value, ranges) {
-    var selected = {}
-    ;(ranges || []).forEach(function(range) { for (var i = range.start; i < range.start + range.length; i++) selected[i] = true })
-    var text = String(value || "")
-    var output = ""
-    for (var index = 0; index < text.length; index++) {
-      var character = escapeMarkup(text.charAt(index))
-      output += selected[index] ? "<b><u>" + character + "</u></b>" : character
-    }
-    return output
-  }
-
   function filterDisplayText() {
     // Keep filterText unchanged for matching; only make literal spaces visible.
     return filterText.replace(/ /g, "▁")
   }
 
   function loadCompose(raw) {
-    if (XComposeParser.exceedsSourceLimit(raw)) {
+    var bundle = null
+    try { bundle = JSON.parse(raw || "") } catch (_) { bundle = null }
+    if (!bundle || typeof bundle !== "object" || !Array.isArray(bundle.files)) {
       entries = []
-      diagnostics = [{ severity: "error", line: 0, code: "source-too-large", message: "XCompose file is too large to index" }]
-      composeLoadState = "ready"
+      diagnostics = [{ severity: "error", line: 0, code: "unreadable-source", message: "XCompose bundle is invalid" }]
+      composeLoadState = "invalid"
       rebuildDisplay()
       return
     }
-    var parsed = XComposeParser.parse(raw, composePath)
+    var parsed = XComposeParser.parseBundle(bundle)
     entries = parsed.entries
-    diagnostics = parsed.diagnostics
-    composeLoadState = "ready"
+    diagnostics = parsed.diagnostics.concat((bundle.diagnostics || []).map(function(item) {
+      return { severity: item.severity, line: 0, code: item.code, message: item.message }
+    }))
+    if (bundle.state === "ok" && bundle.path) composePath = bundle.path
+    composeLoadState = bundle.state === "missing" ? "missing" : (bundle.state === "ok" ? "ready" : "invalid")
     rebuildDisplay()
   }
 
@@ -146,19 +184,59 @@ Item {
     if (opened) rebuildDisplay()
   }
 
-  function startBoundedRead(process, path, limit) {
-    process.nextPath = path
-    process.nextLimit = limit
-    if (process.running) { process.pending = true; return }
-    process.pending = false
-    process.output = ""
-    process.command = ["node", pluginDir + "/scripts/read-bounded.js", path, String(limit)]
-    process.running = true
+  function includeRoots() {
+    if (!config.includes.roots.length) return [home]
+    return config.includes.roots.map(function(root) { return XComposeConfig.resolvePath(root, home) })
   }
 
-  function readCompose() { startBoundedRead(composeRead, composePath, maxComposeBytes) }
-  function readFavorites() { startBoundedRead(favoritesRead, favoritesPath, maxStateBytes) }
-  function readHistory() { startBoundedRead(historyRead, historyPath, maxStateBytes) }
+  function allowedRoots() {
+    var roots = [home]
+    var xdgConfig = Quickshell.env("XDG_CONFIG_HOME")
+    var xdgData = Quickshell.env("XDG_DATA_HOME")
+    var temporary = Quickshell.env("TMPDIR") || "/tmp"
+    if (xdgConfig) roots.push(xdgConfig)
+    if (xdgData) roots.push(xdgData)
+    if (temporary) roots.push(temporary)
+    config.security.allowedRoots.forEach(function(root) { roots.push(XComposeConfig.resolvePath(root, home)) })
+    return roots
+  }
+
+  function readOptions() {
+    return {
+      includes: { enabled: config.includes.enabled, roots: includeRoots() },
+      security: { allowExternalPaths: config.security.allowExternalPaths, allowedRoots: allowedRoots() }
+    }
+  }
+
+  function readCompose() {
+    composeRead.read(composePath, maxComposeBytes, [JSON.stringify(readOptions())])
+  }
+
+  function launchPendingFromFile(fileFailed) {
+    if (!pendingSecret) return
+    var script = pendingCopy ? "/scripts/copy.sh" : "/scripts/insert.sh"
+    var command = ["bash", pluginDir + script]
+    if (fileFailed) command.push(pendingSecret)
+    else {
+      command.push("--file", secretPath)
+      if (!pendingCopy) command.push("--clear", config.insert.clearClipboardAfterPaste ? "1" : "0")
+    }
+    pendingSecret = ""
+    pendingCopy = false
+    Quickshell.execDetached(command)
+  }
+  function readFavorites() { favoritesRead.read(favoritesPath, maxStateBytes) }
+  function readHistory() { historyRead.read(historyPath, maxStateBytes) }
+  function readConfig() { configRead.read(configPath, maxConfigBytes) }
+
+  function loadConfig(raw) {
+    var parsed = XComposeConfig.parse(raw)
+    config = parsed.config
+    configDiagnostics = parsed.diagnostics
+    configLoadState = parsed.present ? "ready" : "defaults"
+    if (opened) applyOpen()
+    else if (filteredGroups.length || entries.length) rebuildDisplay()
+  }
 
   function composeReadFailed(exitCode) {
     composeLoadState = exitCode === 3 ? "missing" : "invalid"
@@ -173,12 +251,57 @@ Item {
 
   function warningCount() { return diagnostics.filter(function(item) { return item.severity === "warning" }).length }
   function errorCount() { return diagnostics.filter(function(item) { return item.severity === "error" }).length }
+  function configErrorCount() { return configDiagnostics.filter(function(item) { return item.severity === "error" }).length }
+  function configWarningCount() { return configDiagnostics.filter(function(item) { return item.severity === "warning" }).length }
+  function sourceName() { return composeSourceOrigin === "default" || !composeSourceName ? "default" : composeSourceName }
 
   function clearPreview() {
     previewDescription = ""
     previewSequence = ""
     previewResult = ""
+    previewTags = ""
+    previewSource = ""
     previewLine = 0
+  }
+
+  function viewOptions() {
+    return { showTags: config.ui.showTags, maskSensitive: config.ui.maskSensitive, revealSensitive: revealSensitive }
+  }
+
+  function previewMetadataText() {
+    var parts = []
+    if (previewSequence) parts.push(previewSequence)
+    if (previewLine) parts.push("line " + previewLine)
+    if (previewSource) parts.push(previewSource)
+    return parts.join("  •  ")
+  }
+
+  function previewResultText() {
+    return XComposeViewModel.previewResultText(selectedVariant(selectedIndex), previewResult, viewOptions())
+  }
+
+  function selectedSensitive() {
+    var variant = selectedVariant(selectedIndex)
+    return variant ? variant.sensitive : false
+  }
+
+  function toggleReveal() {
+    if (!config.ui.maskSensitive) return
+    revealSensitive = !revealSensitive
+    rebuildDisplay()
+    syncPreview()
+  }
+
+  function toggleDiagnostics() {
+    diagnosticsOpen = !diagnosticsOpen
+    if (diagnosticsOpen) previewOpen = false
+  }
+
+  function diagnosticsContent() {
+    var lines = []
+    diagnostics.forEach(function(item) { lines.push("line " + item.line + "  •  " + item.code + "  •  " + item.message) })
+    configDiagnostics.forEach(function(item) { lines.push("config  •  " + item.code + "  •  " + item.message) })
+    return lines.length ? lines.join("\n") : "No diagnostics"
   }
 
   function selectedVariant(index) {
@@ -194,12 +317,15 @@ Item {
     previewDescription = variant.descriptionPreview
     previewSequence = variant.sequencePreview
     previewResult = variant.result
+    previewTags = XComposeViewModel.metadataText(variant)
+    previewSource = config.ui.showSource ? XComposeViewModel.sourceLabel(variant.source) : ""
     previewLine = variant.line
   }
 
   function togglePreview() {
     if (!displayModel.count) return
     previewOpen = !previewOpen
+    if (previewOpen) diagnosticsOpen = false
     syncPreview()
   }
 
@@ -207,27 +333,56 @@ Item {
     var parts = ["↑/↓ navigate", "Ctrl+F favorite", "Tab variants"]
     if (displayModel.count) parts.push((selectedIndex + 1) + "/" + displayModel.count)
     if (previewOpen) parts.push("Full preview")
+    if (diagnosticsOpen) parts.push("Diagnostics")
+    if (sourceError) parts.push(sourceError)
+    if (configErrorCount()) parts.push(configErrorCount() + " config error" + (configErrorCount() === 1 ? "" : "s"))
+    else if (configWarningCount()) parts.push(configWarningCount() + " config warning" + (configWarningCount() === 1 ? "" : "s"))
+    if (config.ui.maskSensitive && selectedSensitive()) parts.push(revealSensitive ? "Ctrl+R hide" : "Ctrl+R reveal")
     if (errorCount()) parts.push(errorCount() + " conflict" + (errorCount() === 1 ? "" : "s"))
     else if (warningCount()) parts.push(warningCount() + " rule warning" + (warningCount() === 1 ? "" : "s"))
     return parts.join("  •  ")
   }
 
   function footerActionsText() {
+    if (diagnosticsOpen) return "Diagnostics  •  Ctrl+D results  •  Esc results"
     return previewOpen ? "Enter insert  •  Ctrl+C copy  •  Ctrl+P results  •  Esc results" : "Enter insert  •  Ctrl+C copy  •  Ctrl+P preview  •  Esc close"
+  }
+
+  function firstDiagnosticMessage(list) {
+    for (var index = 0; index < list.length; index++) if (list[index].severity === "error") return list[index].message
+    return list.length ? list[0].message : ""
+  }
+
+  function emptyTitle() {
+    if (sourceError) return sourceError
+    if (configErrorCount()) return "Configuration error"
+    if (composeLoadState === "missing") return "XCompose file not found"
+    if (entries.length) return "No matching shortcuts"
+    return "No valid XCompose entries"
+  }
+
+  function emptyDetail() {
+    if (sourceError) return "Define it in " + configPath
+    if (configErrorCount()) return firstDiagnosticMessage(configDiagnostics) + "  •  " + configPath
+    if (composeLoadState === "missing") return "Create " + composePath + " or set XCOMPOSEFILE"
+    return composePath
   }
 
   function rebuildDisplay(resetSelection) {
     var selectedGroupId = !resetSelection && filteredGroups.length && selectedIndex < filteredGroups.length ? filteredGroups[selectedIndex].groupId : ""
-    var groups = XComposeSearch.search(entries, filterText, history, favorites, 100)
+    var searchOptions = { fuzzy: config.search.fuzzy }
+    var groups = XComposeSearch.search(entries, filterText, history, favorites, config.search.maxResults, searchOptions)
     filteredGroups = groups
+    var needle = XComposeSearch.normalize(filterText)
     displayModel.clear()
+    var options = viewOptions()
     for (var i = 0; i < groups.length; i++) {
       var group = groups[i]
-      var savedIndex = variantSelections[group.groupId]
-      var variantIndex = typeof savedIndex === "number" ? Math.max(0, Math.min(savedIndex, group.variants.length - 1)) : group.activeVariantIndex
-      var variant = group.variants[variantIndex]
-      var match = XComposeSearch.matchEntry(variant, XComposeSearch.normalize(filterText)) || { descriptionRanges: [], resultRanges: [], sequenceRanges: [] }
-      displayModel.append({ groupId: group.groupId, description: variant.descriptionPreview, descriptionMarkup: root.highlightMarkup(variant.descriptionPreview, match.descriptionRanges), preview: variant.valuePreview, previewMarkup: root.highlightMarkup(variant.valuePreview, match.resultRanges), sequenceMarkup: root.highlightMarkup(variant.sequencePreview, match.sequenceRanges), variants: group.variants.length, variantIndex: variantIndex, favorite: group.favorite })
+      var selected = XComposeViewModel.selectVariant(group, variantSelections)
+      var match = selected.variantIndex === group.activeVariantIndex
+        ? { descriptionRanges: group.descriptionRanges, resultRanges: group.resultRanges, sequenceRanges: group.sequenceRanges }
+        : XComposeSearch.matchEntry(selected.variant, needle, searchOptions)
+      displayModel.append(XComposeViewModel.buildRow(group, selected.variant, selected.variantIndex, match, options))
     }
     if (!displayModel.count) { selectedIndex = 0; previewOpen = false; clearPreview(); return }
     var restored = -1
@@ -285,6 +440,12 @@ Item {
     history = XComposeHistory.record(history, variant.id, Date.now(), 100)
     saveHistory()
     dismiss()
+    if (variant.sensitive) {
+      pendingSecret = variant.result
+      pendingCopy = copyOnly
+      secretFile.setText(variant.result)
+      return
+    }
     Quickshell.execDetached(["bash", pluginDir + (copyOnly ? "/scripts/copy.sh" : "/scripts/insert.sh"), variant.result])
   }
 
@@ -325,61 +486,55 @@ Item {
     onFileChanged: root.readHistory()
   }
 
-  Process {
+  FileView {
+    id: configFile
+    blockLoading: true
+    blockAllReads: true
+    preload: false
+    watchChanges: true
+    path: root.configPath
+    printErrors: false
+    onFileChanged: root.readConfig()
+  }
+
+  FileView {
+    id: secretFile
+    blockLoading: true
+    blockAllReads: true
+    preload: false
+    printErrors: false
+    path: root.secretPath
+    atomicWrites: true
+    onSaved: root.launchPendingFromFile(false)
+    onSaveFailed: function(error) { root.launchPendingFromFile(true) }
+  }
+
+  BoundedFileReader {
     id: composeRead
-    running: false
-    property string output: ""
-    property string nextPath: ""
-    property int nextLimit: 0
-    property bool pending: false
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: composeRead.output = text }
-    onExited: function(exitCode) {
-      if (pending) {
-        var path = nextPath, limit = nextLimit
-        pending = false
-        Qt.callLater(function() { root.startBoundedRead(composeRead, path, limit) })
-        return
-      }
-      if (exitCode === 0) root.loadCompose(output); else root.composeReadFailed(exitCode)
-    }
+    scriptPath: root.pluginDir + "/scripts/read-compose.js"
+    onLoaded: function(text) { root.loadCompose(text) }
+    onFailed: function(exitCode) { root.composeReadFailed(exitCode) }
   }
 
-  Process {
+  BoundedFileReader {
     id: favoritesRead
-    running: false
-    property string output: ""
-    property string nextPath: ""
-    property int nextLimit: 0
-    property bool pending: false
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: favoritesRead.output = text }
-    onExited: function(exitCode) {
-      if (pending) {
-        var path = nextPath, limit = nextLimit
-        pending = false
-        Qt.callLater(function() { root.startBoundedRead(favoritesRead, path, limit) })
-        return
-      }
-      root.loadFavorites(exitCode === 0 ? output : "")
-    }
+    scriptPath: root.pluginDir + "/scripts/read-bounded.js"
+    onLoaded: function(text) { root.loadFavorites(text) }
+    onFailed: function(exitCode) { root.loadFavorites("") }
   }
 
-  Process {
+  BoundedFileReader {
     id: historyRead
-    running: false
-    property string output: ""
-    property string nextPath: ""
-    property int nextLimit: 0
-    property bool pending: false
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: historyRead.output = text }
-    onExited: function(exitCode) {
-      if (pending) {
-        var path = nextPath, limit = nextLimit
-        pending = false
-        Qt.callLater(function() { root.startBoundedRead(historyRead, path, limit) })
-        return
-      }
-      root.loadHistory(exitCode === 0 ? output : "")
-    }
+    scriptPath: root.pluginDir + "/scripts/read-bounded.js"
+    onLoaded: function(text) { root.loadHistory(text) }
+    onFailed: function(exitCode) { root.loadHistory("") }
+  }
+
+  BoundedFileReader {
+    id: configRead
+    scriptPath: root.pluginDir + "/scripts/read-bounded.js"
+    onLoaded: function(text) { root.loadConfig(text) }
+    onFailed: function(exitCode) { root.loadConfig("") }
   }
 
   Timer {
@@ -391,7 +546,8 @@ Item {
 
   Component.onCompleted: {
     Quickshell.execDetached(["mkdir", "-p", stateDir])
-    Qt.callLater(function() { root.readFavorites(); root.readHistory() })
+    Quickshell.execDetached(["mkdir", "-p", "-m", "700", secretDir])
+    Qt.callLater(function() { root.readConfig(); root.readFavorites(); root.readHistory() })
   }
 
   PanelWindow {
@@ -424,9 +580,11 @@ Item {
         focus: true
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
-          if (event.key === Qt.Key_Escape) { if (root.previewOpen) root.previewOpen = false; else if (root.filterText) root.setFilter(""); else root.dismiss() }
+          if (event.key === Qt.Key_Escape) { if (root.diagnosticsOpen) root.diagnosticsOpen = false; else if (root.previewOpen) root.previewOpen = false; else if (root.filterText) root.setFilter(""); else root.dismiss() }
           else if (event.key === Qt.Key_F && (event.modifiers & Qt.ControlModifier)) root.toggleFavorite(root.selectedIndex)
           else if (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier)) root.togglePreview()
+          else if (event.key === Qt.Key_D && (event.modifiers & Qt.ControlModifier)) root.toggleDiagnostics()
+          else if (event.key === Qt.Key_R && (event.modifiers & Qt.ControlModifier)) root.toggleReveal()
           else if (Util.editsFilter(event, root.filterText)) root.setFilter(Util.editedFilter(event, root.filterText))
           else if (event.key === Qt.Key_Up) root.select(-1)
           else if (event.key === Qt.Key_Down) root.select(1)
@@ -470,9 +628,24 @@ Item {
           }
 
           Text {
+            id: sourceBadge
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.composeSourceOrigin !== "default" && root.composeSourceOrigin !== ""
+            text: root.sourceName()
+            textFormat: Text.PlainText
+            color: root.foreground
+            opacity: 0.45
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            elide: Text.ElideRight
+          }
+
+          Text {
             anchors.left: searchIcon.right
             anchors.leftMargin: Style.spacing.sm
-            anchors.right: parent.right
+            anchors.right: sourceBadge.visible ? sourceBadge.left : parent.right
+            anchors.rightMargin: Style.spacing.sm
             anchors.verticalCenter: parent.verticalCenter
             text: root.filterText ? root.filterDisplayText() : "Search XCompose shortcuts…"
             textFormat: Text.PlainText
@@ -491,7 +664,7 @@ Item {
           ListView {
             id: results
             anchors.fill: parent
-            visible: !root.previewOpen
+            visible: !root.previewOpen && !root.diagnosticsOpen
             model: displayModel
             spacing: root.rowSpacing
             clip: true
@@ -585,7 +758,21 @@ Item {
             Text {
               id: previewMetadata
               width: parent.width
-              text: root.previewSequence + (root.previewLine ? "  •  line " + root.previewLine : "")
+              text: root.previewMetadataText()
+              textFormat: Text.PlainText
+              color: root.foreground
+              opacity: 0.58
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              elide: Text.ElideRight
+              maximumLineCount: 1
+            }
+
+            Text {
+              id: previewTagsLine
+              width: parent.width
+              visible: text.length > 0
+              text: root.previewTags
               textFormat: Text.PlainText
               color: root.foreground
               opacity: 0.58
@@ -597,7 +784,7 @@ Item {
 
             Rectangle {
               width: parent.width
-              height: Math.max(0, parent.height - previewTitle.implicitHeight - previewMetadata.implicitHeight - previewPane.spacing * 2)
+              height: Math.max(0, parent.height - previewTitle.implicitHeight - previewMetadata.implicitHeight - (previewTagsLine.visible ? previewTagsLine.implicitHeight : 0) - previewPane.spacing * (previewTagsLine.visible ? 3 : 2))
               radius: root.cornerRadius
               color: root.selectedBackground
               border.width: 1
@@ -616,7 +803,57 @@ Item {
                 Text {
                   id: fullPreviewText
                   width: previewScroll.width
-                  text: root.previewResult
+                  text: root.previewResultText()
+                  textFormat: Text.PlainText
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                  wrapMode: Text.WrapAnywhere
+                }
+              }
+            }
+          }
+
+          Column {
+            id: diagnosticsPane
+            anchors.fill: parent
+            visible: root.diagnosticsOpen
+            spacing: root.contentSpacing
+
+            Text {
+              id: diagnosticsTitle
+              width: parent.width
+              text: "Diagnostics"
+              textFormat: Text.PlainText
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.title
+              elide: Text.ElideRight
+              maximumLineCount: 1
+            }
+
+            Rectangle {
+              width: parent.width
+              height: Math.max(0, parent.height - diagnosticsTitle.implicitHeight - diagnosticsPane.spacing)
+              radius: root.cornerRadius
+              color: root.selectedBackground
+              border.width: 1
+              border.color: root.border
+              clip: true
+
+              Flickable {
+                id: diagnosticsScroll
+                anchors.fill: parent
+                anchors.margins: Style.spacing.md
+                contentWidth: width
+                contentHeight: Math.max(height, diagnosticsBody.implicitHeight)
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+
+                Text {
+                  id: diagnosticsBody
+                  width: diagnosticsScroll.width
+                  text: root.diagnosticsContent()
                   textFormat: Text.PlainText
                   color: root.foreground
                   font.family: root.fontFamily
@@ -629,10 +866,10 @@ Item {
 
           Column {
             anchors.centerIn: parent
-            visible: !root.previewOpen && displayModel.count === 0
+            visible: !root.previewOpen && !root.diagnosticsOpen && displayModel.count === 0
             spacing: Style.space(8)
-            Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.composeLoadState === "missing" ? "XCompose file not found" : root.entries.length ? "No matching shortcuts" : "No valid XCompose entries"; textFormat: Text.PlainText; color: root.foreground; opacity: 0.75; font.family: root.fontFamily; font.pixelSize: Style.font.title }
-            Text { width: Math.min(implicitWidth, card.width - root.contentMargin * 2); horizontalAlignment: Text.AlignHCenter; text: root.composeLoadState === "missing" ? "Create " + root.composePath + " or set XCOMPOSEFILE" : root.composePath; textFormat: Text.PlainText; color: root.foreground; opacity: 0.52; font.family: root.fontFamily; font.pixelSize: Style.font.caption; elide: Text.ElideMiddle }
+            Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.emptyTitle(); textFormat: Text.PlainText; color: root.foreground; opacity: 0.75; font.family: root.fontFamily; font.pixelSize: Style.font.title }
+            Text { width: Math.min(implicitWidth, card.width - root.contentMargin * 2); horizontalAlignment: Text.AlignHCenter; text: root.emptyDetail(); textFormat: Text.PlainText; color: root.foreground; opacity: 0.52; font.family: root.fontFamily; font.pixelSize: Style.font.caption; elide: Text.ElideMiddle }
           }
         }
 
