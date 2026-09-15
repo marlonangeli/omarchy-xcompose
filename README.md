@@ -2,7 +2,10 @@
 
 Search, inspect, and insert shortcuts from your personal XCompose file without leaving Omarchy Shell.
 
-The picker reads `$XCOMPOSEFILE` when set, otherwise `~/.XCompose`. It indexes direct rules only, so system compose tables referenced with `include` never overwhelm personal shortcuts.
+The picker reads `$XCOMPOSEFILE` when set, otherwise `~/.XCompose` (or a
+configured source). It indexes direct rules only by default, so system compose
+tables referenced with `include "%L"` never overwhelm personal shortcuts;
+includes can be enabled explicitly with roots and size caps.
 
 ## Preview
 
@@ -14,9 +17,14 @@ The picker reads `$XCOMPOSEFILE` when set, otherwise `~/.XCompose`. It indexes d
 
 ## Features
 
-- Search descriptions, output, key names, compact sequences such as `rr`, and Compose tokens such as `<space> <e>`
+- Search descriptions, output, key names, compact sequences such as `rr`, Compose tokens such as `<space> <e>`, aliases, and `#tags`
 - Group all shortcuts that produce the same output
 - Cycle variations with `Tab` and `Shift+Tab`
+- `@name`, `@tags`, `@alias`, and `@sensitive` metadata in XCompose comments
+- Sensitive values hidden in the UI, revealed with `Ctrl+R`, inserted through a `0600` file
+- Diagnostics pane (`Ctrl+D`) for parse, config, and include problems
+- Optional `include` support with roots, size caps, and cycle protection
+- Configuration file for source paths, named sources, search, UI, and security
 - Live reload while the picker is open
 - Local, opaque usage history with no telemetry
 - Favorites, stored locally as opaque entry IDs
@@ -56,7 +64,9 @@ omarchy-shell shell summon dev.ilegna.xcompose '{}'
 | Ctrl+C | Copy the selected result without inserting |
 | Ctrl+F | Toggle the selected shortcut as a favorite |
 | Ctrl+P | Toggle the full result preview |
-| Escape | Clear search, then close |
+| Ctrl+D | Toggle the diagnostics pane |
+| Ctrl+R | Reveal or hide sensitive values for the session |
+| Escape | Close diagnostics or preview, clear search, then close |
 
 Long or multiline values are inserted in full. The results list keeps a compact,
 single-line preview so one entry cannot cover another; press `Ctrl+P` to inspect
@@ -80,19 +90,27 @@ For example, typing `/` finds rules containing `<slash>`.
 Matching text is bold and underlined directly in the description, output, and
 Compose sequence, so it is clear why each result was returned.
 
-## XCompose descriptions
+## XCompose descriptions and metadata
 
-Comments immediately before a rule become its description. An inline comment overrides that inherited description for one rule.
+Comments immediately before a rule become its description. An inline comment overrides that inherited description for one rule. Comments also accept search
+tags, aliases, display names, and a sensitivity marker.
 
 ```text
-# Arrow right
+# Arrow right @tags: navigation @alias: seta
 <Multi_key> <r> <r> : "→"
 <Multi_key> <minus> <greater> : "→"
 
-<Multi_key> <c> <o> : "©" # Copyright
+# @name: Euro sign @tags: currency
+<Multi_key> <space> <e> : "€"
+
+# Personal password @sensitive
+<Multi_key> <space> <p> : "hunter2"
 ```
 
-See [XCompose format](docs/xcompose.md) for supported syntax and diagnostics.
+`#navigation` filters by tag. Sensitive values show as `󰌾 ••••••` until `Ctrl+R`
+reveals them, and they are inserted without touching the process argument list.
+
+See [XCompose format](docs/xcompose.md) for the full syntax and diagnostics.
 
 ## Configure a keybind
 
@@ -113,8 +131,20 @@ previous file if validation fails. Re-running `install` replaces only the
 plugin-managed block. Use `--replace` only after checking the current keybinding;
 it adds the required `hl.unbind()` override.
 
-See [Configuration](docs/configuration.md) for source selection, state files,
-custom launch payloads, and keybinding management.
+## Configuration
+
+Everything is optional and lives in one file:
+
+```text
+~/.config/omarchy-xcompose/config.json
+```
+
+It can set the preferred XCompose path, named sources, include roots, search
+behaviour, UI toggles, clipboard clearing, and the allowed path roots. Without
+it the picker uses `$XCOMPOSEFILE` and then `~/.XCompose`.
+
+See [Configuration](docs/configuration.md) for the schema, source precedence,
+includes, sensitive values, and keybinding management.
 
 ## Diagnose and remove
 
@@ -132,7 +162,11 @@ and duplicate or conflicting XCompose sequences. See
 
 ## Security and development
 
-The plugin reads one local XCompose file, invokes `wl-copy` and `wtype`, stores only opaque usage identifiers locally, and makes no network requests or telemetry calls. See [SECURITY.md](SECURITY.md).
+The plugin reads local XCompose files (plus opt-in includes) as regular files
+only, invokes `wl-copy` and `wtype`, stores only opaque usage identifiers
+locally, restricts summon payload paths to user-writable roots, and makes no
+network requests or telemetry calls. See [SECURITY.md](SECURITY.md).
 
-For architecture, XCompose behavior, and local validation, see
-[Architecture](docs/architecture.md) and [XCompose format](docs/xcompose.md).
+For architecture, XCompose behavior, benchmarks, and local validation, see
+[Architecture](docs/architecture.md), [XCompose format](docs/xcompose.md), and
+[Benchmarks](docs/benchmarks.md).
