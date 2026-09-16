@@ -34,4 +34,7 @@ assert.match(menu, /id: composeFile[\s\S]*blockAllReads: true[\s\S]*preload: fal
 assert.match(menu, /id: favoritesFile[\s\S]*blockAllReads: true[\s\S]*preload: false[\s\S]*onFileChanged: root\.readFavorites\(\)/)
 assert.match(menu, /id: historyFile[\s\S]*blockAllReads: true[\s\S]*preload: false[\s\S]*onFileChanged: root\.readHistory\(\)/)
 assert.match(menu, /function startBoundedRead\(process, path, limit\)[\s\S]*scripts\/read-bounded\.js/)
+assert.match(menu, /scripts\/read-compose-tree\.js/)
+assert.match(menu, /XComposeParser\.combine\(/)
+assert.match(menu, /id: includeWatchers[\s\S]*model: root\.composeSources/)
 console.log("menu shortcut tests passed")

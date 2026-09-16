@@ -38,6 +38,7 @@ Item {
   property int previewLine: 0
   property var entries: []
   property var diagnostics: []
+  property var composeSources: []
   property var filteredGroups: []
   property var history: XComposeHistory.empty()
   property var favorites: XComposeFavorites.empty()
@@ -118,16 +119,28 @@ Item {
   }
 
   function loadCompose(raw) {
-    if (XComposeParser.exceedsSourceLimit(raw)) {
-      entries = []
-      diagnostics = [{ severity: "error", line: 0, code: "source-too-large", message: "XCompose file is too large to index" }]
-      composeLoadState = "ready"
-      rebuildDisplay()
+    var bundle = null
+    try { bundle = JSON.parse(raw) } catch (_) { bundle = null }
+    if (!bundle || !Array.isArray(bundle.files)) {
+      composeReadFailed(4)
       return
     }
-    var parsed = XComposeParser.parse(raw, composePath)
+    var parsedFiles = []
+    var extra = Array.isArray(bundle.diagnostics) ? bundle.diagnostics.slice() : []
+    for (var i = 0; i < bundle.files.length; i++) {
+      var file = bundle.files[i] || {}
+      var text = String(file.text || "")
+      var source = String(file.path || composePath)
+      if (XComposeParser.exceedsSourceLimit(text)) {
+        extra.push({ severity: "warning", line: 0, source: source, code: "source-too-large", message: "Included XCompose file is too large to index: " + source })
+        continue
+      }
+      parsedFiles.push(XComposeParser.parse(text, source))
+    }
+    var parsed = XComposeParser.combine(parsedFiles)
     entries = parsed.entries
-    diagnostics = parsed.diagnostics
+    diagnostics = extra.concat(parsed.diagnostics)
+    composeSources = bundle.files.map(function(item) { return item && item.path ? item.path : "" }).filter(function(item) { return item && item !== composePath })
     composeLoadState = "ready"
     rebuildDisplay()
   }
@@ -156,7 +169,15 @@ Item {
     process.running = true
   }
 
-  function readCompose() { startBoundedRead(composeRead, composePath, maxComposeBytes) }
+  function readCompose() {
+    composeRead.nextPath = composePath
+    composeRead.nextLimit = maxComposeBytes
+    if (composeRead.running) { composeRead.pending = true; return }
+    composeRead.pending = false
+    composeRead.output = ""
+    composeRead.command = ["node", pluginDir + "/scripts/read-compose-tree.js", composePath, String(maxComposeBytes)]
+    composeRead.running = true
+  }
   function readFavorites() { startBoundedRead(favoritesRead, favoritesPath, maxStateBytes) }
   function readHistory() { startBoundedRead(historyRead, historyPath, maxStateBytes) }
 
@@ -301,6 +322,20 @@ Item {
     onFileChanged: root.readCompose()
   }
 
+  Instantiator {
+    id: includeWatchers
+    model: root.composeSources
+    delegate: FileView {
+      blockLoading: true
+      blockAllReads: true
+      preload: false
+      watchChanges: true
+      path: modelData
+      printErrors: false
+      onFileChanged: root.readCompose()
+    }
+  }
+
   FileView {
     id: favoritesFile
     blockLoading: true
@@ -335,9 +370,8 @@ Item {
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: composeRead.output = text }
     onExited: function(exitCode) {
       if (pending) {
-        var path = nextPath, limit = nextLimit
         pending = false
-        Qt.callLater(function() { root.startBoundedRead(composeRead, path, limit) })
+        Qt.callLater(function() { root.readCompose() })
         return
       }
       if (exitCode === 0) root.loadCompose(output); else root.composeReadFailed(exitCode)

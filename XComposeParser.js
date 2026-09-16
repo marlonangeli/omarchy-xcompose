@@ -4,8 +4,10 @@ function normalize(value) {
 }
 
 var maxSourceLength = 1024 * 1024
-var maxEntries = 5000
+var maxEntries = 20000
 var maxResultLength = 4096
+var maxIncludeDepth = 8
+var maxIncludeFiles = 32
 
 function exceedsSourceLimit(raw) { return String(raw || "").length > maxSourceLength }
 
@@ -108,6 +110,112 @@ function sequenceTokenIndexes(sequence, compact) {
   return indexes
 }
 
+function parseIncludeDirective(trimmed) {
+  var match = String(trimmed || "").match(/^include\s+"((?:\\.|[^"\\])*)"\s*$/)
+  return match ? match[1] : null
+}
+
+function expandIncludeTemplate(quoted, subst) {
+  var text = String(quoted || "")
+  var values = subst || {}
+  var output = ""
+  for (var i = 0; i < text.length; i++) {
+    if (text.charAt(i) !== "%") { output += text.charAt(i); continue }
+    var next = text.charAt(i + 1)
+    if (next === "%") { output += "%"; i++; continue }
+    if (next === "H" && values.H != null) { output += values.H; i++; continue }
+    if (next === "L" && values.L != null) { output += values.L; i++; continue }
+    if (next === "S" && values.S != null) { output += values.S; i++; continue }
+    output += "%"
+  }
+  return output
+}
+
+function localeAliases(locale) {
+  var name = String(locale || "C").trim()
+  if (!name) name = "C"
+  var aliases = [name]
+  if (/utf8$/i.test(name) && aliases.indexOf(name.replace(/utf8$/i, "UTF-8")) < 0) aliases.push(name.replace(/utf8$/i, "UTF-8"))
+  if (/UTF-8$/.test(name) && aliases.indexOf(name.replace(/UTF-8$/, "utf8")) < 0) aliases.push(name.replace(/UTF-8$/, "utf8"))
+  var base = name.split(".")[0]
+  if (base && aliases.indexOf(base) < 0) aliases.push(base)
+  if (aliases.indexOf("C.UTF-8") < 0) aliases.push("C.UTF-8")
+  if (aliases.indexOf("C") < 0) aliases.push("C")
+  return aliases
+}
+
+function lookupComposeDir(composeDirText, locale) {
+  var wanted = localeAliases(locale)
+  var lines = String(composeDirText || "").split(/\r?\n/)
+  for (var w = 0; w < wanted.length; w++) {
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim()
+      if (!line || line.charAt(0) === "#") continue
+      var parts = line.split(/\s+/)
+      if (parts.length >= 2 && parts[1] === wanted[w]) return parts[0]
+    }
+  }
+  return ""
+}
+
+function sequenceKey(entry) {
+  return (entry && entry.rawSequence ? entry.rawSequence : []).join("\u001f")
+}
+
+function combine(parsedList) {
+  var entries = []
+  var diagnostics = []
+  var includes = []
+  var list = parsedList || []
+  for (var i = 0; i < list.length; i++) {
+    var parsed = list[i] || {}
+    var parsedEntries = parsed.entries || []
+    var parsedDiagnostics = parsed.diagnostics || []
+    var parsedIncludes = parsed.includes || []
+    for (var e = 0; e < parsedEntries.length; e++) entries.push(parsedEntries[e])
+    for (var d = 0; d < parsedDiagnostics.length; d++) diagnostics.push(parsedDiagnostics[d])
+    for (var n = 0; n < parsedIncludes.length; n++) includes.push(parsedIncludes[n])
+  }
+  var bySequence = Object.create(null)
+  var kept = []
+  for (var index = 0; index < entries.length; index++) {
+    var entry = entries[index]
+    var key = sequenceKey(entry)
+    if (!bySequence[key]) {
+      bySequence[key] = entry
+      kept.push(entry)
+      continue
+    }
+    if (bySequence[key].source === entry.source) {
+      kept.push(entry)
+      continue
+    }
+    var earlier = bySequence[key]
+    var same = earlier.result === entry.result
+    var origin = earlier.source ? " of " + earlier.source : ""
+    diagnostics.push({
+      severity: "warning",
+      line: entry.line,
+      source: entry.source || "",
+      relatedLine: earlier.line,
+      relatedSource: earlier.source || "",
+      code: same ? "duplicate-sequence" : "overridden-sequence",
+      message: same
+        ? "Duplicate compose sequence first defined on line " + earlier.line + origin
+        : "Compose sequence overrides line " + earlier.line + origin
+    })
+    var previous = kept.indexOf(earlier)
+    if (previous >= 0) kept[previous] = entry
+    bySequence[key] = entry
+  }
+  entries = kept
+  if (entries.length > maxEntries) {
+    diagnostics.push({ severity: "warning", line: 0, source: "", code: "entry-limit", message: "Ignored rules after " + maxEntries + " entries" })
+    entries = entries.slice(0, maxEntries)
+  }
+  return { entries: entries, diagnostics: diagnostics, includes: includes }
+}
+
 function parseResult(rhs, line, diagnostics) {
   var parts = splitInlineComment(rhs)
   var match = parts.value.match(/^"((?:\\.|[^"\\])*)"(?:\s+\S+)?\s*$/)
@@ -141,7 +249,14 @@ function parse(raw, source) {
     var trimmed = lines[i].trim()
     if (!trimmed) { comments = []; activeDescription = ""; continue }
     if (trimmed.charAt(0) === "#") { comments.push(trimmed.substring(1).trim()); continue }
-    if (/^include\s+/.test(trimmed)) { includes.push({ line: line, value: trimmed }); comments = []; activeDescription = ""; continue }
+    if (/^include\s+/.test(trimmed)) {
+      var quoted = parseIncludeDirective(trimmed)
+      includes.push({ line: line, value: trimmed, quoted: quoted || "" })
+      if (!quoted) diagnostics.push({ severity: "warning", line: line, source: source || "", code: "invalid-include", message: "Ignored include without a quoted path" })
+      comments = []
+      activeDescription = ""
+      continue
+    }
     if (comments.length) { activeDescription = comments.filter(Boolean).join(" "); comments = [] }
     var colon = trimmed.indexOf(":")
     if (colon < 0) {

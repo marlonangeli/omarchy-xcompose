@@ -1,8 +1,8 @@
 # XCompose Picker for Omarchy
 
-Search, inspect, and insert shortcuts from your personal XCompose file without leaving Omarchy Shell.
+Search, inspect, and insert shortcuts from your XCompose file without leaving Omarchy Shell.
 
-The picker reads `$XCOMPOSEFILE` when set, otherwise `~/.XCompose`. It indexes direct rules only, so system compose tables referenced with `include` never overwhelm personal shortcuts.
+The picker reads `$XCOMPOSEFILE` when set, otherwise `~/.XCompose`. Quoted `include` directives are followed, including locale `%L` and Omarchy's default table, so built-in sequences such as Compose `aa` → å appear alongside personal shortcuts.
 
 ## Preview
 

@@ -36,8 +36,10 @@ resolved file with `scripts/doctor`, or summon a specific path as documented in
 ## Duplicate or conflicting sequences
 
 `doctor` prints both the repeated line and the original line. Identical repeated
-rules are warnings; one sequence producing different results is an error. Remove
-or change one rule, then rerun `doctor`.
+rules are warnings; one sequence producing different results in the same file is
+an error. A later included file may override an earlier sequence; that is a
+warning and the later rule is the one the picker inserts. Remove or change one
+rule, then rerun `doctor`.
 
 ## A result copies but does not insert
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Follow quoted XCompose `include` directives, including `%H`, `%L`, and `%S`.
+- Index locale and Omarchy default compose tables alongside personal shortcuts.
+- Raise the indexed-rule cap so the system Compose file is not truncated.
+
 ## 0.2.1
 
 - Prevent prototype-named XCompose results from crashing result grouping.

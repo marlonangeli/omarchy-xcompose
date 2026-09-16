@@ -1,6 +1,6 @@
 # XCompose format
 
-The picker indexes direct rules from `$XCOMPOSEFILE` or `~/.XCompose`. `include` directives are deliberately ignored in v0.2 so personal results stay fast and predictable.
+The picker indexes `$XCOMPOSEFILE` or `~/.XCompose`, then follows quoted `include` directives. `%H` is the home directory, `%S` is the locale directory (`$XLOCALEDIR` or `/usr/share/X11/locale`), and `%L` is the locale Compose file from `compose.dir`. Relative includes resolve from the file that contains them. Unquoted includes, cycles, unreadable files, and over-limit trees are skipped with a warning so personal rules still appear.
 
 ## Descriptions
 
@@ -36,12 +36,13 @@ Results must be quoted strings. Actual Unicode text and `\\n`, `\\t`, `\\r`, `\\
 <Multi_key> <a> <r> : "\\141\\x72\\U00000072"
 ```
 
-Malformed rules are skipped and reported in the picker. Duplicate sequences are warnings; one sequence producing multiple values is an error because XCompose behavior is ambiguous.
+Malformed rules are skipped and reported in the picker. Duplicate sequences in one file are warnings; one sequence producing multiple values in the same file is an error because XCompose behavior is ambiguous. A later file may override an included sequence; the picker keeps the later rule, matching keyboard Compose behavior, and reports a warning.
 
-For predictable shell responsiveness, the picker indexes at most a 1 MiB source,
-5,000 rules, and 4,096 characters per decoded result. Larger sources are not
-indexed; over-limit rules are skipped with a warning. Local history and favorites
-are each limited to 64 KiB and 100 entries.
+For predictable shell responsiveness, the picker indexes at most 1 MiB per
+source file, 4 MiB across the include tree, 32 included files, 8 include levels,
+20,000 rules, and 4,096 characters per decoded result. Larger sources are not
+indexed; over-limit rules and includes are skipped with a warning. Local history
+and favorites are each limited to 64 KiB and 100 entries.
 
 Before loading, the picker accepts only regular files and rejects symbolic links,
 FIFOs, and other special paths. This prevents a configured path from blocking or

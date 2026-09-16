@@ -14,8 +14,10 @@ For a temporary source without changing the environment:
 omarchy-shell shell summon dev.ilegna.xcompose '{"path":"/tmp/example.XCompose"}'
 ```
 
-Relative paths are resolved from the home directory. Includes are intentionally
-not indexed in v0.2, keeping personal results bounded and predictable.
+Relative paths are resolved from the home directory. Quoted `include` directives
+are followed with the same regular-file and size checks as the root source.
+`%L` uses `$XLOCALEDIR/compose.dir` when present, otherwise a locale `Compose`
+file under `$XLOCALEDIR` or `/usr/share/X11/locale`.
 
 ## Keybinding
 
