@@ -43,7 +43,7 @@ problem shows in the diagnostics pane (`Ctrl+D`) and the defaults stay active.
 | `compose.path` | `""` | Preferred XCompose file; empty falls back to `$XCOMPOSEFILE` then `~/.XCompose` |
 | `compose.sources` | `[]` | Named files for `{"source": "work"}` payloads |
 | `includes.enabled` | `false` | Index `include "file"` directives |
-| `includes.roots` | `[]` | Allowed directories for includes; empty allows any regular file |
+| `includes.roots` | `[]` | Allowed directories for includes; empty defaults to `$HOME` |
 | `search.fuzzy` | `true` | Allow subsequence matching after exact/prefix/substring |
 | `search.maxResults` | `100` | Rendered groups, 1–500 |
 | `ui.showTags` | `true` | Show `#tags` in the result row |
@@ -64,6 +64,11 @@ problem shows in the diagnostics pane (`Ctrl+D`) and the defaults stay active.
 Relative paths resolve from the home directory. `$XCOMPOSEFILE` and `~/.XCompose`
 may be symlinks; the picker resolves them and refuses anything that is not a
 regular file.
+
+The root policy applies only to untrusted `{"path": ...}` summon payloads.
+Configured paths, named sources, and `$XCOMPOSEFILE` remain compatible with
+locations outside the default roots, while still requiring a bounded regular
+file after resolving symlinks.
 
 ## Includes
 
@@ -91,11 +96,14 @@ Mark entries in the XCompose file:
 ```
 
 With `ui.maskSensitive` (default), the result is hidden as `󰌾 ••••••` in the row
-and in the preview. `Ctrl+R` reveals the selected value for the current session.
+and in the preview. `Ctrl+R` reveals only the selected value; moving to another
+result remasks it.
 The value still inserts and copies normally; for sensitive entries it is written
 to a `0600` file under `$XDG_RUNTIME_DIR/xcompose/` before the insert script
 runs, so it never appears in the process argument list. The file is removed
-right after use.
+right after use, including dependency or clipboard failures. If staging the file
+fails, the picker stays open and reports the error instead of falling back to
+argv.
 
 ## Keybinding
 

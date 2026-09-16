@@ -11,6 +11,9 @@
 - Follow symlinked XCompose files after `realpath` validation; still reject FIFOs, devices, and loops.
 - Extract `BoundedFileReader.qml`, `XComposeConfig.js`, and `XComposeViewModel.js`; the QML layer now only handles interaction, watching, and insertion.
 - Cut redundant matching on every keystroke, speed up entry IDs and normalization (~30% faster parse), and add staged benchmarks, fixtures, a lint script, and CI.
+- Add `examples/demo.XCompose` and `scripts/demo` for one-command validation and interactive testing.
+- Fix configured and environment sources outside payload roots, config-aware include validation, and `doctor` source precedence.
+- Fix option-like literal results, selected-only sensitive reveal, fail-closed secret staging and cleanup, and stale-clipboard insertion races.
 
 ## 0.2.1
 

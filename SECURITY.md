@@ -19,8 +19,9 @@ What it does not do:
 
 - no network access, telemetry, or external services;
 - no `eval` of XCompose contents, descriptions, tags, or aliases;
-- no shell interpolation: parsed results are passed to stdin or to a `0600`
-  file, never into a command line or shell code;
+- no shell interpolation: ordinary results are passed as a delimited argument;
+  sensitive results use a `0600` file and never enter a command line or shell
+  code;
 - no XCompose markup: the UI escapes user text before styled rendering.
 
 ## Boundaries
@@ -33,10 +34,14 @@ What it does not do:
   limited to 16 files, 1 MiB total, and configured roots.
 - `{"path": ...}` summon payloads are restricted to `$HOME`, `$XDG_CONFIG_HOME`,
   `$XDG_DATA_HOME`, and `$TMPDIR` plus `security.allowedRoots`, unless
-  `security.allowExternalPaths` is enabled.
+  `security.allowExternalPaths` is enabled. Trusted configured sources and
+  `$XCOMPOSEFILE` retain their existing path behavior.
 - `@sensitive` results are masked in the UI and inserted through a `0600` file
   under `$XDG_RUNTIME_DIR/xcompose/`, so they do not appear in process argument
-  lists. The file is removed after use.
+  lists. Only the selected entry can be revealed, navigation remasks it, staging
+  failures stop the operation, and the file is removed on success or failure.
+- Insertion waits until `wl-paste` returns the requested bytes, not merely until
+  some clipboard owner exists, before sending Shift+Insert.
 - The keybind helper edits only its marked block in
   `~/.config/hypr/bindings.lua`, creates a backup, and restores it when
   Hyprland validation fails.

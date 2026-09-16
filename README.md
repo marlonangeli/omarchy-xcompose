@@ -15,13 +15,24 @@ includes can be enabled explicitly with roots and size caps.
 
 ![Demo](demo.gif)
 
+Open the included feature showcase with one command from the installed plugin:
+
+```bash
+~/.config/omarchy/plugins/dev.ilegna.xcompose/scripts/demo
+```
+
+From a repository checkout, `scripts/demo --validate` checks the example without
+opening the picker. See [`examples/demo.XCompose`](examples/demo.XCompose) for
+names, tags, aliases, variants, escapes, multiline output, sensitive masking,
+literal option-like values, and an optional include.
+
 ## Features
 
 - Search descriptions, output, key names, compact sequences such as `rr`, Compose tokens such as `<space> <e>`, aliases, and `#tags`
 - Group all shortcuts that produce the same output
 - Cycle variations with `Tab` and `Shift+Tab`
 - `@name`, `@tags`, `@alias`, and `@sensitive` metadata in XCompose comments
-- Sensitive values hidden in the UI, revealed with `Ctrl+R`, inserted through a `0600` file
+- Sensitive values hidden in the UI, revealed one selected entry at a time with `Ctrl+R`, inserted through a `0600` file
 - Diagnostics pane (`Ctrl+D`) for parse, config, and include problems
 - Optional `include` support with roots, size caps, and cycle protection
 - Configuration file for source paths, named sources, search, UI, and security
@@ -48,7 +59,7 @@ omarchy plugin add https://github.com/marlonangeli/omarchy-xcompose.git --enable
 Open it directly before configuring a keybind:
 
 ```bash
-omarchy-shell shell summon dev.ilegna.xcompose '{}'
+omarchy-shell shell summon dev.ilegna.xcompose
 ```
 
 ## Usage
@@ -65,7 +76,7 @@ omarchy-shell shell summon dev.ilegna.xcompose '{}'
 | Ctrl+F | Toggle the selected shortcut as a favorite |
 | Ctrl+P | Toggle the full result preview |
 | Ctrl+D | Toggle the diagnostics pane |
-| Ctrl+R | Reveal or hide sensitive values for the session |
+| Ctrl+R | Reveal or hide the selected sensitive value; navigation remasks it |
 | Escape | Close diagnostics or preview, clear search, then close |
 
 Long or multiline values are inserted in full. The results list keeps a compact,
@@ -108,7 +119,8 @@ tags, aliases, display names, and a sensitivity marker.
 ```
 
 `#navigation` filters by tag. Sensitive values show as `󰌾 ••••••` until `Ctrl+R`
-reveals them, and they are inserted without touching the process argument list.
+reveals the selected entry. Navigation remasks it, and staging failures stop the
+operation rather than putting the value in the process argument list.
 
 See [XCompose format](docs/xcompose.md) for the full syntax and diagnostics.
 
@@ -156,8 +168,9 @@ includes, sensitive values, and keybinding management.
 
 The uninstall wrapper removes only its marked keybind block before removing the plugin. Manually created bindings are untouched.
 
-`doctor` checks required commands, plugin discovery, the managed keybinding,
-and duplicate or conflicting XCompose sequences. See
+`doctor` checks required commands, resolves the same configured source as the
+picker, checks plugin discovery and the managed keybinding, and reports duplicate
+or conflicting XCompose sequences. See
 [Troubleshooting](docs/troubleshooting.md) when a check fails.
 
 ## Security and development

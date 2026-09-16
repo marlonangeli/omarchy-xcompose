@@ -69,8 +69,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
   and loops remain rejected.
 - [x] Sensitive values written to `$XDG_RUNTIME_DIR/xcompose/` (0700) and passed
   through `--file`; `insert.sh`/`copy.sh` delete the file after use.
-- [x] `insert.sh` waits for clipboard ownership (`wl-paste --list-types`) and
-  clears the clipboard only when `insert.clearClipboardAfterPaste` is enabled.
+- [x] `insert.sh` waits until `wl-paste` returns the requested bytes and clears
+  the clipboard only when `insert.clearClipboardAfterPaste` is enabled.
 - [x] Adversarial tests: traversal, cycle, FIFO/symlink, malformed config,
   markup in tags/aliases, parser fuzz.
 - [x] Updated `SECURITY.md`.

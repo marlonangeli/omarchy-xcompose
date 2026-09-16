@@ -20,7 +20,7 @@ has been committed yet.
 | Metadata | `@` directives in comments: `# Name @tags: a, b @alias: x, y @sensitive` |
 | Config | `$XDG_CONFIG_HOME/omarchy-xcompose/config.json` (fallback `~/.config/omarchy-xcompose/config.json`); override with `XCOMPOSE_PICKER_CONFIG` |
 | Imports | Off by default (`includes.enabled=false`); `%L`/system always skipped |
-| Sensitive | Mask in list/preview + `Ctrl+R` to reveal; description never derives from the value; insertion through a `0600` file (never argv) |
+| Sensitive | Mask in list/preview + selected-only `Ctrl+R` reveal; description never derives from the value; fail-closed insertion through a `0600` file (never argv) |
 | Hardening | Restrict payload paths; follow symlinks with `realpath` (regular target + caps); adversarial tests; re-enable CI |
 
 ## Compatibility contract

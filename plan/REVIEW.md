@@ -32,3 +32,16 @@ References are against `0.2.1` (commit `d301474`).
 | S4 | `insert.sh` relied on fixed sleeps (0.15/0.2) and killed `wl-copy --foreground` → focus/clipboard race | `scripts/insert.sh:24,25,26` | wait for clipboard ownership (`wl-paste --list-types`, timeout) and clear only when configured |
 | S5 | No adversarial tests (traversal, include cycle, malformed config, markup) | `tests/` | adversarial suite in phase 4 |
 | S6 | CI removed (`.github/workflows` empty) | `.github/` | workflow running tests + checks (phase 5) |
+
+## Branch review follow-up
+
+| # | Finding | Fix |
+|---|---|---|
+| R1 | Resolved-root policy accidentally applied to configured/environment sources | carry `restrictRoot` from the selected source origin; enforce only for payloads |
+| R2 | `validate-compose.js` passed legacy positional include arguments | pass the same JSON reader options as QML and test cross-file conflicts |
+| R3 | Literal results such as `--file` and `--clear` were parsed as script options | delimit ordinary results with `--` and add regressions |
+| R4 | Sensitive staging failure fell back to argv | fail closed, keep the picker open, and report the action error |
+| R5 | `Ctrl+R` revealed every sensitive row | bind reveal to the selected entry and remask on navigation |
+| R6 | Clipboard readiness accepted an old non-empty selection | compare `wl-paste` bytes with the requested value before typing paste |
+| R7 | `doctor` ignored `compose.path` | resolve its source through `XComposeConfig.selectSource()` |
+| R8 | Early dependency failures could leave the sensitive file | install cleanup traps before dependency checks in both scripts |

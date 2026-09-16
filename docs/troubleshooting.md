@@ -7,7 +7,15 @@ Start with the environment check:
 ```
 
 It verifies the required commands, XCompose readability, plugin manifest and
-discovery, managed keybinding, and duplicate or conflicting sequences.
+discovery, managed keybinding, configuration, and duplicate or conflicting
+sequences. Source resolution follows the picker: `compose.path`, then
+`$XCOMPOSEFILE`, then `~/.XCompose`.
+
+To verify the bundled example independently of personal rules:
+
+```bash
+~/.config/omarchy/plugins/dev.ilegna.xcompose/scripts/demo --validate
+```
 
 ## The latest plugin code is not visible
 
@@ -48,7 +56,7 @@ empty state. Check `compose.sources` in the configuration.
 Includes are off by default. Enable them and, if needed, restrict the roots:
 
 ```json
-"includes": { "enabled": true, "roots": ["~/.config/xcompose"] }
+"includes": { "enabled": true, "roots": ["~/.config/xcompose", "/usr/share/omarchy/default/xcompose"] }
 ```
 
 Then press `Ctrl+D`: skipped `%L` includes, cycles, missing files, and files

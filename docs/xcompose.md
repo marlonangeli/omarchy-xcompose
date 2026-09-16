@@ -37,7 +37,7 @@ Comments and inline comments accept `@` directives:
 | `@name: text` | Display name, overriding the comment text |
 | `@tags: a, b` | Tags; searchable and filterable with `#tag` |
 | `@alias: x, y` / `@aliases:` | Extra search terms |
-| `@sensitive` | Hidden value in the UI, safe insertion through a `0600` file |
+| `@sensitive` | Hidden value in the UI, selected-only reveal, safe insertion through a `0600` file |
 
 Directives inherit for consecutive rules under the same comment block, so all
 variations of a group share tags and aliases. Unknown directives produce a
@@ -46,6 +46,9 @@ characters each; `@name` is capped at 120 characters.
 
 An entry marked `@sensitive` never falls back to its result as a description; if
 there is no comment at all, the name becomes `(sensitive)`.
+
+Run `scripts/demo` to open a safe showcase, or `scripts/demo --validate` to only
+check [`examples/demo.XCompose`](../examples/demo.XCompose).
 
 ## Search
 

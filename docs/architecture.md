@@ -42,6 +42,7 @@ only interaction, file watching, and insertion, so the view logic is testable
 in Node.
 
 History and favorites are separate versioned files under the local Omarchy state
-directory and contain opaque entry IDs only. Sensitive results never touch disk:
-they are written to a `0600` file under `$XDG_RUNTIME_DIR/xcompose/` immediately
-before insertion and deleted by the script.
+directory and contain opaque entry IDs only. Sensitive results are staged only in
+a `0600` file under `$XDG_RUNTIME_DIR/xcompose/` immediately before insertion;
+the scripts remove it on success and failure. A staging failure is fail-closed
+and never falls back to argv.
