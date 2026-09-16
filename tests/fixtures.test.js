@@ -12,6 +12,7 @@ function load(name) {
 
 const parser = load("XComposeParser.js")
 const fixtures = path.join(__dirname, "..", "bench", "fixtures")
+const examples = path.join(__dirname, "..", "examples")
 
 function fixture(name) {
   return fs.readFileSync(path.join(fixtures, name), "utf8")
@@ -60,5 +61,14 @@ assert.equal(includes.entries.length, 3)
 assert.equal(includes.entries[0].source, "compose-includes")
 assert.equal(includes.entries[1].source, "include-part-a")
 assert.equal(includes.entries[2].source, "include-part-b")
+
+const demo = parser.parse(fs.readFileSync(path.join(examples, "demo.XCompose"), "utf8"), "demo.XCompose")
+assert.equal(demo.entries.length, 7)
+assert.equal(demo.includes.length, 1)
+assert.equal(demo.entries[0].tags.includes("navigation"), true)
+assert.equal(demo.entries[0].aliases.includes("seta"), true)
+assert.equal(demo.entries.some(function(entry) { return entry.result === "--clear" }), true)
+assert.equal(demo.entries.some(function(entry) { return entry.sensitive && entry.result === "demo-sensitive-value" }), true)
+assert.equal(demo.entries.some(function(entry) { return entry.result === "hello\nfrom XCompose" }), true)
 
 console.log("fixture tests passed")

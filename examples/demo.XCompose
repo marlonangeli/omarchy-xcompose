@@ -1,0 +1,21 @@
+# Arrow right @tags: navigation, unicode @aliases: arrow, seta
+<Multi_key> <r> <r> : "→"
+<Multi_key> <minus> <greater> : "→"
+
+# @name: Euro sign @tags: currency, unicode @alias: euro
+<Multi_key> <space> <e> : "\u20ac"
+
+# Em dash @tags: punctuation @aliases: emdash, long dash
+<Multi_key> <minus> <minus> : "—"
+
+# Multiline greeting @tags: text, multiline
+<Multi_key> <g> <m> : "hello\nfrom XCompose"
+
+# Literal option-like value @tags: regression, literal
+<Multi_key> <d> <c> : "--clear"
+
+# Demo sensitive value (not a real secret) @tags: sensitive, demo @sensitive
+<Multi_key> <s> <v> : "demo-sensitive-value"
+
+# Enable includes in the plugin configuration to load this optional entry.
+include "demo-extra.XCompose"
