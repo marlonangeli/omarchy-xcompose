@@ -44,9 +44,15 @@ const home = process.env.HOME || ""
 const roots = config.includes.roots.length
   ? config.includes.roots.map(function(root) { return configModule.resolvePath(root, home) })
   : home ? [path.resolve(home)] : []
+const readOptions = {
+  includes: { enabled: config.includes.enabled, roots: roots },
+  // The validator checks the configured/environment source, not an untrusted
+  // summon payload. Payload root enforcement remains in the picker.
+  security: { restrictRoot: false, allowExternalPaths: true, allowedRoots: [] }
+}
 
 const readComposePath = path.resolve(__dirname, "read-compose.js")
-const read = childProcess.spawnSync(process.execPath, [readComposePath, composePath, String(maxSourceBytes), config.includes.enabled ? "1" : "0"].concat(roots), { encoding: "utf8", maxBuffer: maxSourceBytes * 4 })
+const read = childProcess.spawnSync(process.execPath, [readComposePath, composePath, String(maxSourceBytes), JSON.stringify(readOptions)], { encoding: "utf8", maxBuffer: maxSourceBytes * 8 })
 
 if (read.error || read.status !== 0) {
   const reason = read.stderr ? read.stderr.trim() : "unable to read XCompose file"

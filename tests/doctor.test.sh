@@ -30,6 +30,17 @@ grep -Fq 'ok: plugin manifest is valid' "$test_root/output"
 grep -Fq 'ok: one managed keybind block is installed' "$test_root/output"
 grep -Fq 'ok: no duplicate or conflicting XCompose sequences' "$test_root/output"
 
+mkdir -p "$test_root/home/.config/omarchy-xcompose"
+custom_compose="$test_root/configured.XCompose"
+printf '%s\n' '<Multi_key> <c> : "configured"' >"$custom_compose"
+printf '{"version":1,"compose":{"path":"%s"}}\n' "$custom_compose" >"$test_root/home/.config/omarchy-xcompose/config.json"
+if ! env HOME="$test_root/home" XDG_CONFIG_HOME="$test_root/home/.config" XCOMPOSEFILE="$test_root/home/.XCompose" PATH="$test_root/bin" /usr/bin/bash "$project_dir/scripts/doctor" >"$test_root/output"; then
+  cat "$test_root/output" >&2
+  exit 1
+fi
+grep -Fq "ok: XCompose file is readable: $custom_compose" "$test_root/output"
+rm "$test_root/home/.config/omarchy-xcompose/config.json"
+
 printf '%s\n' '<Multi_key> <r> <r> : "→"' '<Multi_key> <r> <r> : "→"' >"$test_root/home/.XCompose"
 env HOME="$test_root/home" XDG_CONFIG_HOME="$test_root/home/.config" XCOMPOSEFILE="$test_root/home/.XCompose" PATH="$test_root/bin" /usr/bin/bash "$project_dir/scripts/doctor" >"$test_root/output"
 grep -Fq 'warning: line 2: Duplicate compose sequence first defined on line 1' "$test_root/output"

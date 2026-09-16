@@ -15,6 +15,7 @@ const includes = options.includes && typeof options.includes === "object" ? opti
 const includeEnabled = includes.enabled === true
 const includeRoots = Array.isArray(includes.roots) ? includes.roots.map(function(root) { return path.resolve(root) }) : []
 const security = options.security && typeof options.security === "object" ? options.security : {}
+const restrictRoot = security.restrictRoot === true
 const allowExternalPaths = security.allowExternalPaths === true
 const allowedRoots = Array.isArray(security.allowedRoots) ? security.allowedRoots.map(function(root) { return path.resolve(root) }) : []
 
@@ -74,7 +75,7 @@ function main() {
       return
     }
 
-    if (isRoot && !allowExternalPaths && !underRoots(resolved, allowedRoots)) {
+    if (isRoot && restrictRoot && !allowExternalPaths && !underRoots(resolved, allowedRoots)) {
       bundle.state = "invalid"
       bundle.message = `XCompose path is outside the allowed roots: ${resolved}`
       return

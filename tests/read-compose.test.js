@@ -7,6 +7,7 @@ const path = require("node:path")
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "xcompose-bundle-"))
 const outside = fs.mkdtempSync(path.join(os.tmpdir(), "xcompose-outside-"))
 const reader = path.join(__dirname, "..", "scripts", "read-compose.js")
+const validator = path.join(__dirname, "..", "scripts", "validate-compose.js")
 
 function read(target, limit, enabled, roots, security) {
   const options = { includes: { enabled: enabled === true, roots: roots || [] }, security: security || {} }
@@ -88,15 +89,26 @@ try {
   assert.ok(bundle.diagnostics.some(item => item.code === "include-limit"))
 
   fs.writeFileSync(main, '<Multi_key> <r> : "r"\n')
-  bundle = bundleOf(main, 1024, false, [], { allowedRoots: [root] })
+  bundle = bundleOf(main, 1024, false, [], { restrictRoot: true, allowedRoots: [root] })
   assert.equal(bundle.state, "ok")
-  bundle = bundleOf(main, 1024, false, [], { allowedRoots: [path.join(root, "elsewhere")] })
+  bundle = bundleOf(main, 1024, false, [], { restrictRoot: true, allowedRoots: [path.join(root, "elsewhere")] })
   assert.equal(bundle.state, "invalid")
   assert.match(bundle.message, /outside the allowed roots/)
-  bundle = bundleOf(main, 1024, false, [], { allowExternalPaths: true, allowedRoots: [path.join(root, "elsewhere")] })
+  bundle = bundleOf(main, 1024, false, [], { restrictRoot: true, allowExternalPaths: true, allowedRoots: [path.join(root, "elsewhere")] })
   assert.equal(bundle.state, "ok")
-  bundle = bundleOf(main, 1024, false, [], { allowedRoots: [] })
+  bundle = bundleOf(main, 1024, false, [], { restrictRoot: true, allowedRoots: [] })
   assert.equal(bundle.state, "ok")
+  bundle = bundleOf(main, 1024, false, [], { restrictRoot: false, allowedRoots: [path.join(root, "elsewhere")] })
+  assert.equal(bundle.state, "ok")
+
+  fs.writeFileSync(extra, '<Multi_key> <r> : "included"\n')
+  fs.writeFileSync(main, '<Multi_key> <r> : "root"\ninclude "extra"\n')
+  const configPath = path.join(root, "config.json")
+  fs.writeFileSync(configPath, JSON.stringify({ version: 1, includes: { enabled: true, roots: [root] } }))
+  const validation = childProcess.spawnSync(process.execPath, [validator, main, "--config", configPath], { encoding: "utf8" })
+  assert.equal(validation.status, 1, validation.stdout + validation.stderr)
+  assert.match(validation.stdout, /Compose sequence conflicts/)
+  assert.doesNotMatch(validation.stdout, /include directive\(s\).*enable includes/)
 } finally {
   fs.rmSync(root, { recursive: true, force: true })
   fs.rmSync(outside, { recursive: true, force: true })

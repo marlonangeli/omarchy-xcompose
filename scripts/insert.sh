@@ -18,11 +18,16 @@ while (( $# > 0 )); do
       ;;
     --clear)
       shift
-      clear_after="${1:-1}"
+      clear_after="${1:-}"
+      if [[ "$clear_after" != "0" && "$clear_after" != "1" ]]; then
+        printf 'omarchy-xcompose: --clear requires 0 or 1\n' >&2
+        exit 2
+      fi
       ;;
     --)
       shift
       value="${1:-}"
+      break
       ;;
     *)
       value="$1"
@@ -33,9 +38,6 @@ done
 
 [[ -n "$value" || -n "$source_file" ]] || exit 0
 [[ -z "$source_file" || -f "$source_file" ]] || exit 0
-
-command -v wl-copy >/dev/null 2>&1 || { printf 'omarchy-xcompose: wl-copy is required\n' >&2; exit 127; }
-command -v wtype >/dev/null 2>&1 || { printf 'omarchy-xcompose: wtype is required\n' >&2; exit 127; }
 
 copy_pid=""
 
@@ -49,6 +51,14 @@ cleanup() {
 }
 
 trap cleanup EXIT
+
+if [[ -n "$source_file" ]]; then
+  chmod 600 -- "$source_file"
+fi
+
+command -v wl-copy >/dev/null 2>&1 || { printf 'omarchy-xcompose: wl-copy is required\n' >&2; exit 127; }
+command -v wl-paste >/dev/null 2>&1 || { printf 'omarchy-xcompose: wl-paste is required\n' >&2; exit 127; }
+command -v wtype >/dev/null 2>&1 || { printf 'omarchy-xcompose: wtype is required\n' >&2; exit 127; }
 
 emit_value() {
   if [[ -n "$source_file" ]]; then
@@ -68,7 +78,7 @@ fi
 wait_for_clipboard() {
   local attempt
   for (( attempt = 0; attempt < 50; attempt++ )); do
-    if [[ -n "$(wl-paste --list-types 2>/dev/null || true)" ]]; then
+    if cmp -s <(emit_value) <(wl-paste --no-newline --type text/plain 2>/dev/null); then
       return 0
     fi
     sleep 0.02
@@ -76,11 +86,7 @@ wait_for_clipboard() {
   return 1
 }
 
-if command -v wl-paste >/dev/null 2>&1; then
-  wait_for_clipboard || true
-else
-  sleep 0.15
-fi
+wait_for_clipboard || { printf 'omarchy-xcompose: clipboard did not acquire the requested value\n' >&2; exit 1; }
 
 wtype -M shift -k Insert -m shift
 sleep 0.2

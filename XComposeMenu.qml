@@ -32,6 +32,7 @@ Item {
   readonly property string secretPath: secretDir + "/pending"
   property string pendingSecret: ""
   property bool pendingCopy: false
+  property bool secretWritePending: false
   readonly property int maxComposeBytes: XComposeParser.maxSourceBytes
   readonly property int maxStateBytes: XComposeHistory.maxStateBytes
   readonly property int maxConfigBytes: XComposeConfig.maxConfigLength
@@ -50,7 +51,8 @@ Item {
   property int selectedIndex: 0
   property bool previewOpen: false
   property bool diagnosticsOpen: false
-  property bool revealSensitive: false
+  property string revealedSensitiveId: ""
+  property string actionError: ""
   property string previewDescription: ""
   property string previewSequence: ""
   property string previewResult: ""
@@ -98,7 +100,8 @@ Item {
     selectedIndex = 0
     previewOpen = false
     diagnosticsOpen = false
-    revealSensitive = false
+    revealedSensitiveId = ""
+    actionError = ""
     clearPreview()
     filteredGroups = []
     displayModel.clear()
@@ -204,7 +207,11 @@ Item {
   function readOptions() {
     return {
       includes: { enabled: config.includes.enabled, roots: includeRoots() },
-      security: { allowExternalPaths: config.security.allowExternalPaths, allowedRoots: allowedRoots() }
+      security: {
+        restrictRoot: composeSourceOrigin === "payload",
+        allowExternalPaths: config.security.allowExternalPaths,
+        allowedRoots: allowedRoots()
+      }
     }
   }
 
@@ -212,18 +219,25 @@ Item {
     composeRead.read(composePath, maxComposeBytes, [JSON.stringify(readOptions())])
   }
 
-  function launchPendingFromFile(fileFailed) {
+  function launchPendingFromFile() {
     if (!pendingSecret) return
     var script = pendingCopy ? "/scripts/copy.sh" : "/scripts/insert.sh"
-    var command = ["bash", pluginDir + script]
-    if (fileFailed) command.push(pendingSecret)
-    else {
-      command.push("--file", secretPath)
-      if (!pendingCopy) command.push("--clear", config.insert.clearClipboardAfterPaste ? "1" : "0")
-    }
+    var command = ["bash", pluginDir + script, "--file", secretPath]
+    if (!pendingCopy) command.push("--clear", config.insert.clearClipboardAfterPaste ? "1" : "0")
     pendingSecret = ""
     pendingCopy = false
+    secretWritePending = false
+    dismiss()
     Quickshell.execDetached(command)
+  }
+
+  function secretWriteFailed(error) {
+    pendingSecret = ""
+    pendingCopy = false
+    secretWritePending = false
+    actionError = "Could not stage the sensitive value"
+    console.error("omarchy-xcompose: sensitive staging failed: " + error)
+    Quickshell.execDetached(["rm", "-f", secretPath])
   }
   function readFavorites() { favoritesRead.read(favoritesPath, maxStateBytes) }
   function readHistory() { historyRead.read(historyPath, maxStateBytes) }
@@ -264,8 +278,12 @@ Item {
     previewLine = 0
   }
 
-  function viewOptions() {
-    return { showTags: config.ui.showTags, maskSensitive: config.ui.maskSensitive, revealSensitive: revealSensitive }
+  function viewOptions(variant, selected) {
+    return {
+      showTags: config.ui.showTags,
+      maskSensitive: config.ui.maskSensitive,
+      revealSensitive: selected === true && variant && variant.id === revealedSensitiveId
+    }
   }
 
   function previewMetadataText() {
@@ -277,7 +295,8 @@ Item {
   }
 
   function previewResultText() {
-    return XComposeViewModel.previewResultText(selectedVariant(selectedIndex), previewResult, viewOptions())
+    var variant = selectedVariant(selectedIndex)
+    return XComposeViewModel.previewResultText(variant, previewResult, viewOptions(variant, true))
   }
 
   function selectedSensitive() {
@@ -287,7 +306,9 @@ Item {
 
   function toggleReveal() {
     if (!config.ui.maskSensitive) return
-    revealSensitive = !revealSensitive
+    var variant = selectedVariant(selectedIndex)
+    if (!variant || !variant.sensitive) return
+    revealedSensitiveId = revealedSensitiveId === variant.id ? "" : variant.id
     rebuildDisplay()
     syncPreview()
   }
@@ -335,9 +356,10 @@ Item {
     if (previewOpen) parts.push("Full preview")
     if (diagnosticsOpen) parts.push("Diagnostics")
     if (sourceError) parts.push(sourceError)
+    if (actionError) parts.push(actionError)
     if (configErrorCount()) parts.push(configErrorCount() + " config error" + (configErrorCount() === 1 ? "" : "s"))
     else if (configWarningCount()) parts.push(configWarningCount() + " config warning" + (configWarningCount() === 1 ? "" : "s"))
-    if (config.ui.maskSensitive && selectedSensitive()) parts.push(revealSensitive ? "Ctrl+R hide" : "Ctrl+R reveal")
+    if (config.ui.maskSensitive && selectedSensitive()) parts.push(revealedSensitiveId ? "Ctrl+R hide" : "Ctrl+R reveal")
     if (errorCount()) parts.push(errorCount() + " conflict" + (errorCount() === 1 ? "" : "s"))
     else if (warningCount()) parts.push(warningCount() + " rule warning" + (warningCount() === 1 ? "" : "s"))
     return parts.join("  •  ")
@@ -373,30 +395,30 @@ Item {
     var searchOptions = { fuzzy: config.search.fuzzy }
     var groups = XComposeSearch.search(entries, filterText, history, favorites, config.search.maxResults, searchOptions)
     filteredGroups = groups
-    var needle = XComposeSearch.normalize(filterText)
     displayModel.clear()
-    var options = viewOptions()
+    if (!groups.length) { selectedIndex = 0; previewOpen = false; revealedSensitiveId = ""; clearPreview(); return }
+    var restored = -1
+    for (var row = 0; row < groups.length; row++) if (groups[row].groupId === selectedGroupId) { restored = row; break }
+    selectedIndex = resetSelection ? 0 : (restored >= 0 ? restored : Math.min(selectedIndex, groups.length - 1))
+    var needle = XComposeSearch.normalize(filterText)
     for (var i = 0; i < groups.length; i++) {
       var group = groups[i]
       var selected = XComposeViewModel.selectVariant(group, variantSelections)
       var match = selected.variantIndex === group.activeVariantIndex
         ? { descriptionRanges: group.descriptionRanges, resultRanges: group.resultRanges, sequenceRanges: group.sequenceRanges }
         : XComposeSearch.matchEntry(selected.variant, needle, searchOptions)
-      displayModel.append(XComposeViewModel.buildRow(group, selected.variant, selected.variantIndex, match, options))
+      displayModel.append(XComposeViewModel.buildRow(group, selected.variant, selected.variantIndex, match, viewOptions(selected.variant, i === selectedIndex)))
     }
-    if (!displayModel.count) { selectedIndex = 0; previewOpen = false; clearPreview(); return }
-    var restored = -1
-    for (var row = 0; row < displayModel.count; row++) if (displayModel.get(row).groupId === selectedGroupId) { restored = row; break }
-    selectedIndex = resetSelection ? 0 : (restored >= 0 ? restored : Math.min(selectedIndex, displayModel.count - 1))
     syncPreview()
     Qt.callLater(function() { results.positionViewAtIndex(selectedIndex, ListView.Contain) })
   }
 
-  function setFilter(value) { filterText = value; selectedIndex = 0; previewOpen = false; rebuildDisplay(true) }
+  function setFilter(value) { filterText = value; selectedIndex = 0; previewOpen = false; revealedSensitiveId = ""; rebuildDisplay(true) }
 
   function select(delta) {
     if (!displayModel.count) return
     selectedIndex = (selectedIndex + delta + displayModel.count) % displayModel.count
+    if (revealedSensitiveId) { revealedSensitiveId = ""; rebuildDisplay(); return }
     syncPreview()
     results.positionViewAtIndex(selectedIndex, ListView.Contain)
   }
@@ -404,6 +426,7 @@ Item {
   function selectAbsolute(index) {
     if (!displayModel.count) return
     selectedIndex = Math.max(0, Math.min(index, displayModel.count - 1))
+    if (revealedSensitiveId) { revealedSensitiveId = ""; rebuildDisplay(); return }
     syncPreview()
     results.positionViewAtIndex(selectedIndex, ListView.Contain)
   }
@@ -413,6 +436,7 @@ Item {
     var group = filteredGroups[selectedIndex]
     var current = displayModel.get(selectedIndex).variantIndex
     variantSelections[group.groupId] = (current + delta + group.variants.length) % group.variants.length
+    revealedSensitiveId = ""
     rebuildDisplay()
   }
 
@@ -434,19 +458,22 @@ Item {
   }
 
   function useResult(index, copyOnly) {
+    if (secretWritePending) return
     if (index < 0 || index >= displayModel.count) return
     var variant = selectedVariant(index)
     if (!variant || !variant.result) return
+    actionError = ""
     history = XComposeHistory.record(history, variant.id, Date.now(), 100)
     saveHistory()
-    dismiss()
     if (variant.sensitive) {
       pendingSecret = variant.result
       pendingCopy = copyOnly
+      secretWritePending = true
       secretFile.setText(variant.result)
       return
     }
-    Quickshell.execDetached(["bash", pluginDir + (copyOnly ? "/scripts/copy.sh" : "/scripts/insert.sh"), variant.result])
+    dismiss()
+    Quickshell.execDetached(["bash", pluginDir + (copyOnly ? "/scripts/copy.sh" : "/scripts/insert.sh"), "--", variant.result])
   }
 
   ListModel { id: displayModel }
@@ -505,8 +532,8 @@ Item {
     printErrors: false
     path: root.secretPath
     atomicWrites: true
-    onSaved: root.launchPendingFromFile(false)
-    onSaveFailed: function(error) { root.launchPendingFromFile(true) }
+    onSaved: root.launchPendingFromFile()
+    onSaveFailed: function(error) { root.secretWriteFailed(error) }
   }
 
   BoundedFileReader {

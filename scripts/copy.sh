@@ -18,6 +18,7 @@ while (( $# > 0 )); do
     --)
       shift
       value="${1:-}"
+      break
       ;;
     *)
       value="$1"
@@ -27,6 +28,19 @@ while (( $# > 0 )); do
 done
 
 [[ -n "$value" || -n "$source_file" ]] || exit 0
+[[ -z "$source_file" || -f "$source_file" ]] || exit 0
+
+cleanup() {
+  if [[ -n "$source_file" ]]; then
+    rm -f -- "$source_file"
+  fi
+}
+
+trap cleanup EXIT
+
+if [[ -n "$source_file" ]]; then
+  chmod 600 -- "$source_file"
+fi
 
 command -v wl-copy >/dev/null 2>&1 || {
   printf 'omarchy-xcompose: wl-copy is required\n' >&2
@@ -37,9 +51,7 @@ command -v wl-copy >/dev/null 2>&1 || {
 # by default and retains the Wayland clipboard selection after this script exits.
 # Sensitive values arrive through a 0600 file so they never show up in argv.
 if [[ -n "$source_file" ]]; then
-  [[ -f "$source_file" ]] || exit 0
   wl-copy --type text/plain --sensitive <"$source_file"
-  rm -f -- "$source_file"
 else
   printf '%s' "$value" | wl-copy --type text/plain --sensitive
 fi
