@@ -1,0 +1,12 @@
+# Arrow right @alias: seta
+<Multi_key> <r> <r> : "\u2192" U2192
+# Accented
+<Multi_key> <a> <c> : "Caf\u00e9"
+# Emoji
+<Multi_key> <e> <m> : "\U0001F600"
+# Octal
+<Multi_key> <o> <c> : "\141\x72"
+# Multiline
+<Multi_key> <m> <l> : "first\nsecond\tthird"
+# Literal symbol
+<Multi_key> <a> <r> : "→"

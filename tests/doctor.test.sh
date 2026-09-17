@@ -13,7 +13,7 @@ ln -s /usr/bin/dirname "$test_root/bin/dirname"
 ln -s /usr/bin/grep "$test_root/bin/grep"
 ln -s "$(command -v node)" "$test_root/bin/node"
 
-for command_name in omarchy omarchy-shell wl-copy wtype; do
+for command_name in omarchy omarchy-shell wl-copy wl-paste wtype; do
 cat >"$test_root/bin/$command_name" <<'EOF'
 #!/usr/bin/bash
 if [[ "${1:-}" == "plugin" && "${2:-}" == "list" ]]; then printf '[{"id":"dev.ilegna.xcompose"}]\n'; fi
@@ -27,8 +27,20 @@ if ! env HOME="$test_root/home" XDG_CONFIG_HOME="$test_root/home/.config" XCOMPO
   exit 1
 fi
 grep -Fq 'ok: plugin manifest is valid' "$test_root/output"
+grep -Fq 'ok: wl-paste found' "$test_root/output"
 grep -Fq 'ok: one managed keybind block is installed' "$test_root/output"
 grep -Fq 'ok: no duplicate or conflicting XCompose sequences' "$test_root/output"
+
+mkdir -p "$test_root/home/.config/omarchy-xcompose"
+custom_compose="$test_root/configured.XCompose"
+printf '%s\n' '<Multi_key> <c> : "configured"' >"$custom_compose"
+printf '{"version":1,"compose":{"path":"%s"}}\n' "$custom_compose" >"$test_root/home/.config/omarchy-xcompose/config.json"
+if ! env HOME="$test_root/home" XDG_CONFIG_HOME="$test_root/home/.config" XCOMPOSEFILE="$test_root/home/.XCompose" PATH="$test_root/bin" /usr/bin/bash "$project_dir/scripts/doctor" >"$test_root/output"; then
+  cat "$test_root/output" >&2
+  exit 1
+fi
+grep -Fq "ok: XCompose file is readable: $custom_compose" "$test_root/output"
+rm "$test_root/home/.config/omarchy-xcompose/config.json"
 
 printf '%s\n' '<Multi_key> <r> <r> : "→"' '<Multi_key> <r> <r> : "→"' >"$test_root/home/.XCompose"
 env HOME="$test_root/home" XDG_CONFIG_HOME="$test_root/home/.config" XCOMPOSEFILE="$test_root/home/.XCompose" PATH="$test_root/bin" /usr/bin/bash "$project_dir/scripts/doctor" >"$test_root/output"
@@ -42,6 +54,15 @@ fi
 grep -Fq 'error: line 2: Compose sequence conflicts with line 1' "$test_root/output"
 
 printf '%s\n' '<Multi_key> <r> <r> : "→"' >"$test_root/home/.XCompose"
+
+rm "$test_root/bin/wl-paste"
+if env HOME="$test_root/home" XDG_CONFIG_HOME="$test_root/home/.config" XCOMPOSEFILE="$test_root/home/.XCompose" PATH="$test_root/bin" /usr/bin/bash "$project_dir/scripts/doctor" >/dev/null 2>"$test_root/error"; then
+  printf 'doctor should fail when wl-paste is absent\n' >&2
+  exit 1
+fi
+grep -Fq 'error: wl-paste is required' "$test_root/error"
+printf '#!/usr/bin/bash\nexit 0\n' >"$test_root/bin/wl-paste"
+chmod +x "$test_root/bin/wl-paste"
 
 rm "$test_root/bin/wtype"
 if env HOME="$test_root/home" XDG_CONFIG_HOME="$test_root/home/.config" XCOMPOSEFILE="$test_root/home/.XCompose" PATH="$test_root/bin" /usr/bin/bash "$project_dir/scripts/doctor" >/dev/null 2>&1; then

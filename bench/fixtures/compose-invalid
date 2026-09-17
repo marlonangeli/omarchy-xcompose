@@ -1,0 +1,6 @@
+this line has no separator
+: "missing keysyms"
+<Multi_key> <r> : not quoted
+<Multi_key> <t> : "trailing\
+include nope
+<Multi_key> <v> : "valid"

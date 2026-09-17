@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+status=0
+
+for file in "$project_dir"/XCompose*.js "$project_dir"/scripts/*.js "$project_dir"/bench/*.js "$project_dir"/tests/*.js; do
+  [[ -e "$file" ]] || continue
+  if ! node --check "$file"; then status=1; fi
+done
+
+for file in "$project_dir"/scripts/* "$project_dir"/tests/run "$project_dir"/tests/*.sh "$project_dir"/bench/run; do
+  [[ -f "$file" && "$file" != *.js ]] || continue
+  if ! bash -n "$file"; then status=1; fi
+done
+
+shell_dir="${OMARCHY_PATH:-/usr/share/omarchy}/shell"
+if command -v qmllint >/dev/null 2>&1 && [[ -d "$shell_dir" ]]; then
+  qmllint -I "$shell_dir" "$project_dir/XComposeMenu.qml" "$project_dir/BoundedFileReader.qml" || status=1
+else
+  printf 'lint: qmllint or Omarchy shell sources unavailable; skipped QML lint\n'
+fi
+
+if (( status == 0 )); then
+  printf 'lint: all checks passed\n'
+fi
+
+exit "$status"

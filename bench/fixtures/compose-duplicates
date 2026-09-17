@@ -1,0 +1,9 @@
+# First
+<Multi_key> <r> <r> : "→"
+# Duplicate
+<Multi_key> <r> <r> : "→"
+# Conflict
+<Multi_key> <r> <r> : "different"
+# Another conflict
+<Multi_key> <l> <l> : "a"
+<Multi_key> <l> <l> : "b"

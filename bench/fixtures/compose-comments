@@ -1,0 +1,15 @@
+# Arrow right
+# Navigation keys
+<Multi_key> <r> <r> : "→"
+<Multi_key> <minus> <greater> : "→"
+
+<Multi_key> <c> <o> : "©" # Copyright @alias: copyright, copyleft
+
+# @name: Euro sign @tags: currency, money @alias: euro
+<Multi_key> <space> <e> : "€"
+
+# Secret @sensitive
+<Multi_key> <p> <w> : "hunter2"
+
+# @unknown: value
+<Multi_key> <u> <n> : "u"

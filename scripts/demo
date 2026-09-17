@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_id="dev.ilegna.xcompose"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+plugin_dir="$(cd -- "$script_dir/.." && pwd)"
+demo_path="$plugin_dir/examples/demo.XCompose"
+config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+config_path="${XCOMPOSE_PICKER_CONFIG:-$config_home/omarchy-xcompose/config.json}"
+validate_only=0
+
+usage() {
+  printf 'Usage: scripts/demo [--validate]\n'
+  printf 'Validate examples/demo.XCompose and open it in the installed picker.\n'
+}
+
+case "${1:-}" in
+  "") ;;
+  --validate) validate_only=1 ;;
+  -h|--help) usage; exit 0 ;;
+  *) printf 'omarchy-xcompose demo: unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
+esac
+
+validate_args=()
+[[ -f "$config_path" ]] && validate_args=(--config "$config_path")
+node "$plugin_dir/scripts/validate-compose.js" "$demo_path" "${validate_args[@]}"
+
+(( validate_only == 1 )) && exit 0
+
+command -v omarchy-shell >/dev/null 2>&1 || {
+  printf 'omarchy-xcompose demo: omarchy-shell is required to open the picker\n' >&2
+  exit 127
+}
+
+payload="$(node -e 'process.stdout.write(JSON.stringify({ path: process.argv[1] }))' "$demo_path")"
+omarchy-shell shell summon "$plugin_id" "$payload"

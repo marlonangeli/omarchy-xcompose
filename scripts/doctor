@@ -7,8 +7,35 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 plugin_dir="$(cd -- "$script_dir/.." && pwd)"
 config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 bindings_file="$config_home/hypr/bindings.lua"
+config_path="${XCOMPOSE_PICKER_CONFIG:-$config_home/omarchy-xcompose/config.json}"
 compose_path="${XCOMPOSEFILE:-$HOME/.XCompose}"
 errors=0
+
+ok() { printf 'ok: %s\n' "$*"; }
+warn() { printf 'warning: %s\n' "$*"; }
+fail() { printf 'error: %s\n' "$*" >&2; errors=1; }
+
+for command_name in omarchy omarchy-shell wl-copy wl-paste wtype node; do
+  if command -v "$command_name" >/dev/null 2>&1; then ok "$command_name found"; else fail "$command_name is required"; fi
+done
+
+if [[ -f "$config_path" ]] && command -v node >/dev/null 2>&1; then
+  if resolved_compose_path="$(node -e '
+    const fs = require("node:fs")
+    const vm = require("node:vm")
+    const path = require("node:path")
+    const context = { console }
+    vm.createContext(context)
+    vm.runInContext(fs.readFileSync(path.join(process.argv[1], "XComposeConfig.js"), "utf8"), context)
+    const parsed = context.parse(fs.readFileSync(process.argv[2], "utf8"))
+    const selected = context.selectSource(parsed.config, {}, { HOME: process.env.HOME || "", XCOMPOSEFILE: process.env.XCOMPOSEFILE || "" })
+    process.stdout.write(selected.path)
+  ' "$plugin_dir" "$config_path")" && [[ -n "$resolved_compose_path" ]]; then
+    compose_path="$resolved_compose_path"
+  else
+    fail "could not resolve the configured XCompose source: $config_path"
+  fi
+fi
 
 if [[ "$compose_path" == ~/* ]]; then
   compose_path="$HOME/${compose_path#~/}"
@@ -16,19 +43,40 @@ elif [[ "$compose_path" != /* ]]; then
   compose_path="$HOME/$compose_path"
 fi
 
-ok() { printf 'ok: %s\n' "$*"; }
-warn() { printf 'warning: %s\n' "$*"; }
-fail() { printf 'error: %s\n' "$*" >&2; errors=1; }
-
-for command_name in omarchy omarchy-shell wl-copy wtype node; do
-  if command -v "$command_name" >/dev/null 2>&1; then ok "$command_name found"; else fail "$command_name is required"; fi
-done
-
 if [[ -r "$compose_path" ]]; then
   ok "XCompose file is readable: $compose_path"
-  if ! node "$plugin_dir/scripts/validate-compose.js" "$compose_path"; then errors=1; fi
+  compose_args=()
+  [[ -f "$config_path" ]] && compose_args=(--config "$config_path")
+  if ! node "$plugin_dir/scripts/validate-compose.js" "$compose_path" "${compose_args[@]}"; then errors=1; fi
 else
   fail "XCompose file is not readable: $compose_path"
+fi
+
+if [[ -f "$config_path" ]]; then
+  if config_output="$(node -e '
+    const fs = require("node:fs")
+    const vm = require("node:vm")
+    const path = require("node:path")
+    const context = { console }
+    vm.createContext(context)
+    vm.runInContext(fs.readFileSync(path.join(process.argv[1], "XComposeConfig.js"), "utf8"), context)
+    const parsed = context.parse(fs.readFileSync(process.argv[2], "utf8"))
+    const diagnostics = Array.from(parsed.diagnostics)
+    for (const item of diagnostics) console.log(`${item.severity}: ${item.message}`)
+    process.exit(diagnostics.some(item => item.severity === "error") ? 1 : 0)
+  ' "$plugin_dir" "$config_path" 2>&1)"; then
+    if [[ -n "$config_output" ]]; then
+      printf '%s\n' "$config_output"
+      warn "configuration has warnings: $config_path"
+    else
+      ok "configuration is valid: $config_path"
+    fi
+  else
+    printf '%s\n' "$config_output" >&2
+    fail "configuration is invalid: $config_path"
+  fi
+else
+  ok "no configuration file; using built-in defaults ($config_path)"
 fi
 
 if command -v omarchy >/dev/null 2>&1; then
