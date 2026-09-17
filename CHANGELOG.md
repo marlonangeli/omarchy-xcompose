@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- Hide the header source badge by default; enable it with `ui.showSourceBadge`.
+
 ## 0.3.1
 
 - Preserve persisted entry IDs, full metadata names, mixed-whitespace previews, and description search when `@name` is present.
