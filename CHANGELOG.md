@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Publish a GitHub release from the version tag after CI succeeds on `main`, and publish missing releases for existing version tags.
+
 ## 0.3.1
 
 - Preserve persisted entry IDs, full metadata names, mixed-whitespace previews, and description search when `@name` is present.

@@ -185,3 +185,9 @@ network requests or telemetry calls. See [SECURITY.md](SECURITY.md).
 For architecture, XCompose behavior, benchmarks, and local validation, see
 [Architecture](docs/architecture.md), [XCompose format](docs/xcompose.md), and
 [Benchmarks](docs/benchmarks.md).
+
+When a push to `main` changes `manifest.json`, the release workflow validates
+`manifest.json.version`, creates the annotated `v<version>` tag, and publishes a
+GitHub release from that tag. Missing releases for existing version tags are
+published on the next successful `main` build, so release pull requests must bump
+the manifest version before merging.
