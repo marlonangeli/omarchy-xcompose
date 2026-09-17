@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.1
+
+- Preserve persisted entry IDs, full metadata names, mixed-whitespace previews, and description search when `@name` is present.
+- Report malformed configuration sections, oversized configuration files, include failures, and non-conflict diagnostics accurately.
+- Watch included files for live reloads while preserving selected symlink paths.
+- Harden bounded reads with pre-open and descriptor-based root checks while retaining file, byte, and cycle limits.
+- Use unique sensitive staging files in an enforced-`0700` directory and reject symlink file arguments.
+- Require `wl-paste` in diagnostics and fail validation for every error-severity parser or bundle diagnostic.
+- Run CI on pull requests targeting `main` and pushes to `main`, avoiding duplicate feature-branch push runs.
+- Tag merged releases automatically from `manifest.json.version` after CI succeeds on the exact `main` commit.
+
 ## 0.3.0
 
 - Add an optional configuration file at `~/.config/omarchy-xcompose/config.json` with source paths, named sources, include roots, search behaviour, UI toggles, clipboard clearing, and path policy.
@@ -10,7 +21,7 @@
 - Restrict summon payload paths to `$HOME`, XDG directories, and `$TMPDIR` by default.
 - Follow symlinked XCompose files after `realpath` validation; still reject FIFOs, devices, and loops.
 - Extract `BoundedFileReader.qml`, `XComposeConfig.js`, and `XComposeViewModel.js`; the QML layer now only handles interaction, watching, and insertion.
-- Cut redundant matching on every keystroke, speed up entry IDs and normalization (~30% faster parse), and add staged benchmarks, fixtures, a lint script, and CI.
+- Cut redundant matching on every keystroke, speed up entry IDs and normalization, and add staged benchmarks, fixtures, a lint script, and CI.
 - Add `examples/demo.XCompose` and `scripts/demo` for one-command validation and interactive testing.
 - Fix configured and environment sources outside payload roots, config-aware include validation, and `doctor` source precedence.
 - Fix option-like literal results, selected-only sensitive reveal, fail-closed secret staging and cleanup, and stale-clipboard insertion races.

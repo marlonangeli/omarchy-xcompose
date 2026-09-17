@@ -15,7 +15,7 @@ ok() { printf 'ok: %s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*"; }
 fail() { printf 'error: %s\n' "$*" >&2; errors=1; }
 
-for command_name in omarchy omarchy-shell wl-copy wtype node; do
+for command_name in omarchy omarchy-shell wl-copy wl-paste wtype node; do
   if command -v "$command_name" >/dev/null 2>&1; then ok "$command_name found"; else fail "$command_name is required"; fi
 done
 

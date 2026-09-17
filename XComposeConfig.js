@@ -139,6 +139,13 @@ function warnUnknownKeys(object, section, allowed, diagnostics) {
   }
 }
 
+function readSection(object, key, diagnostics) {
+  if (!Object.prototype.hasOwnProperty.call(object, key)) return {}
+  if (isObject(object[key])) return object[key]
+  diagnostics.push(diagnostic("warning", "config-type", "config." + key + " must be an object; using default"))
+  return {}
+}
+
 function parse(raw) {
   var diagnostics = []
   var config = empty()
@@ -163,32 +170,32 @@ function parse(raw) {
     return { config: config, diagnostics: diagnostics, present: true }
   }
 
-  var compose = isObject(value.compose) ? value.compose : {}
+  var compose = readSection(value, "compose", diagnostics)
   warnUnknownKeys(compose, "compose", ["path", "sources"], diagnostics)
   config.compose.path = readString(compose, "compose", "path", "", diagnostics)
   config.compose.sources = readSources(compose, "compose", "sources", diagnostics)
 
-  var includes = isObject(value.includes) ? value.includes : {}
+  var includes = readSection(value, "includes", diagnostics)
   warnUnknownKeys(includes, "includes", ["enabled", "roots"], diagnostics)
   config.includes.enabled = readBool(includes, "includes", "enabled", config.includes.enabled, diagnostics)
   config.includes.roots = readStringList(includes, "includes", "roots", diagnostics)
 
-  var search = isObject(value.search) ? value.search : {}
+  var search = readSection(value, "search", diagnostics)
   warnUnknownKeys(search, "search", ["fuzzy", "maxResults"], diagnostics)
   config.search.fuzzy = readBool(search, "search", "fuzzy", config.search.fuzzy, diagnostics)
   config.search.maxResults = readInt(search, "search", "maxResults", config.search.maxResults, 1, maxResultsLimit, diagnostics)
 
-  var ui = isObject(value.ui) ? value.ui : {}
+  var ui = readSection(value, "ui", diagnostics)
   warnUnknownKeys(ui, "ui", ["showTags", "showSource", "maskSensitive"], diagnostics)
   config.ui.showTags = readBool(ui, "ui", "showTags", config.ui.showTags, diagnostics)
   config.ui.showSource = readBool(ui, "ui", "showSource", config.ui.showSource, diagnostics)
   config.ui.maskSensitive = readBool(ui, "ui", "maskSensitive", config.ui.maskSensitive, diagnostics)
 
-  var insert = isObject(value.insert) ? value.insert : {}
+  var insert = readSection(value, "insert", diagnostics)
   warnUnknownKeys(insert, "insert", ["clearClipboardAfterPaste"], diagnostics)
   config.insert.clearClipboardAfterPaste = readBool(insert, "insert", "clearClipboardAfterPaste", config.insert.clearClipboardAfterPaste, diagnostics)
 
-  var security = isObject(value.security) ? value.security : {}
+  var security = readSection(value, "security", diagnostics)
   warnUnknownKeys(security, "security", ["allowExternalPaths", "allowedRoots"], diagnostics)
   config.security.allowExternalPaths = readBool(security, "security", "allowExternalPaths", config.security.allowExternalPaths, diagnostics)
   config.security.allowedRoots = readStringList(security, "security", "allowedRoots", diagnostics)
@@ -201,9 +208,10 @@ function pathAllowed(candidate, roots) {
   var target = String(candidate || "")
   if (!target) return false
   for (var index = 0; index < roots.length; index++) {
-    var root = String(roots[index] || "").replace(/\/+$/, "")
+    var root = String(roots[index] || "")
+    if (root !== "/") root = root.replace(/\/+$/, "")
     if (!root) continue
-    if (target === root || target.indexOf(root + "/") === 0) return true
+    if (root === "/" ? target.charAt(0) === "/" : target === root || target.indexOf(root + "/") === 0) return true
   }
   return false
 }

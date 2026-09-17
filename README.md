@@ -98,8 +98,10 @@ Common leading punctuation also searches its Compose key: `.`, `,`, `:`, `;`,
 `<`, `>`, `/`, `\`, `[`, `]`, brackets, quotes, and standard symbol keys.
 For example, typing `/` finds rules containing `<slash>`.
 
-Matching text is bold and underlined directly in the description, output, and
-Compose sequence, so it is clear why each result was returned.
+Visible matching text is bold and underlined directly in the description,
+output, and Compose sequence. When `@name` supplies the displayed label, the
+underlying description remains searchable even though that hidden text cannot be
+highlighted.
 
 ## XCompose descriptions and metadata
 

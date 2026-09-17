@@ -65,6 +65,10 @@ assert.ok(config.parse('{"compose":{"sources":[{"name":"a"}]}}').diagnostics.som
 assert.ok(config.parse('{"compose":{"sources":[{"name":"a","path":"x"},{"name":"a","path":"y"}]}}').diagnostics.some(item => item.code === "config-source"))
 assert.equal(config.parse("x".repeat(config.maxConfigLength + 1)).diagnostics[0].code, "config-too-large")
 
+const malformedSections = config.parse('{"compose":true,"includes":[],"search":"bad","ui":1,"insert":false,"security":null}')
+assert.equal(malformedSections.diagnostics.filter(item => item.code === "config-type").length, 6)
+assert.deepEqual(plain(malformedSections.config), plain(config.empty()))
+
 const manySources = { compose: { sources: Array.from({ length: config.maxListItems + 5 }, (_, index) => ({ name: `s${index}`, path: `p${index}` })) } }
 assert.equal(config.parse(JSON.stringify(manySources)).config.compose.sources.length, config.maxListItems)
 
@@ -73,6 +77,11 @@ assert.equal(config.resolvePath("~", home), home)
 assert.equal(config.resolvePath("x", home), home + "/x")
 assert.equal(config.resolvePath("/x", home), "/x")
 assert.equal(config.resolvePath("", home), "")
+assert.equal(config.pathAllowed("/", ["/"]), true)
+assert.equal(config.pathAllowed("/etc/x", ["/"]), true)
+assert.equal(config.pathAllowed("etc/x", ["/"]), false)
+assert.equal(config.pathAllowed("/srv/x", ["/srv/"]), true)
+assert.equal(config.pathAllowed("/srv2/x", ["/srv"]), false)
 
 const configured = config.parse(JSON.stringify({
   version: 1,

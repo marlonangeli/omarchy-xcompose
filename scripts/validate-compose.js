@@ -28,18 +28,20 @@ function loadModule(name) {
 const configModule = loadModule("XComposeConfig.js")
 
 function readConfig() {
-  if (!configPath) return configModule.empty()
+  if (!configPath) return { config: configModule.empty(), hasError: false }
   try {
     const parsed = configModule.parse(fs.readFileSync(configPath, "utf8"))
-    for (const item of Array.from(parsed.diagnostics)) console.log(`${item.severity === "error" ? "error" : "warning"}: config: ${item.message}`)
-    return parsed.config
+    const diagnostics = Array.from(parsed.diagnostics)
+    for (const item of diagnostics) console.log(`${item.severity === "error" ? "error" : "warning"}: config: ${item.message}`)
+    return { config: parsed.config, hasError: diagnostics.some(function(item) { return item.severity === "error" }) }
   } catch (error) {
     console.error(`error: could not read configuration: ${error.message}`)
     process.exit(2)
   }
 }
 
-const config = readConfig()
+const configResult = readConfig()
+const config = configResult.config
 const home = process.env.HOME || ""
 const roots = config.includes.roots.length
   ? config.includes.roots.map(function(root) { return configModule.resolvePath(root, home) })
@@ -85,18 +87,18 @@ if (bundle.state !== "ok") {
 const parser = loadModule("XComposeParser.js")
 const parsed = parser.parseBundle(bundle)
 const problems = parsed.diagnostics.filter(function(diagnostic) {
-  return diagnostic.code === "duplicate-sequence" || diagnostic.code === "conflicting-sequence"
+  return diagnostic.severity === "error" || diagnostic.code === "duplicate-sequence"
 })
+const hasError = (bundle.diagnostics || []).some(function(diagnostic) { return diagnostic.severity === "error" }) ||
+  parsed.diagnostics.some(function(diagnostic) { return diagnostic.severity === "error" }) || configResult.hasError
 
-if (!problems.length) {
+if (!problems.length && !hasError) {
   console.log("ok: no duplicate or conflicting XCompose sequences")
   process.exit(0)
 }
 
-let hasConflict = false
 for (const diagnostic of problems) {
   const prefix = diagnostic.severity === "error" ? "error" : "warning"
-  if (diagnostic.severity === "error") hasConflict = true
   console.log(`${prefix}: line ${diagnostic.line}: ${diagnostic.message}`)
 }
-process.exit(hasConflict ? 1 : 0)
+process.exit(hasError ? 1 : 0)

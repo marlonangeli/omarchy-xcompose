@@ -125,6 +125,12 @@ assert.equal(search.matchEntry(tagged[0], "#nav", { fuzzy: false }), null)
 assert.deepEqual(JSON.parse(JSON.stringify(search.tagQuery("#navigation arrow"))), { tag: "navigation", remaining: "arrow" })
 assert.equal(search.tagQuery("#"), null)
 
+const namedDescription = parser.parse(`# Shortcut for currency @name: Euro sign\n<Multi_key> <e> : "€"`).entries[0]
+const commentMatch = search.matchEntry(namedDescription, "currency", { fuzzy: false })
+assert.equal(search.search([namedDescription], "currency", state, 100, { fuzzy: false })[0].result, "€")
+assert.deepEqual(Array.from(commentMatch.descriptionRanges), [])
+assert.ok(search.matchEntry(namedDescription, "euro", { fuzzy: false }).descriptionRanges.length > 0)
+
 const rangeRows = search.search(entries, "arrow", state, 100)
 assert.ok(rangeRows[0].descriptionRanges.length > 0)
 assert.deepEqual(Array.from(rangeRows[0].resultRanges), [])

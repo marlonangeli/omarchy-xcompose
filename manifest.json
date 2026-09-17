@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "dev.ilegna.xcompose",
   "name": "XCompose Picker",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "Marlon Angeli",
   "license": "MIT",
   "description": "Search and insert shortcuts defined in your XCompose file.",

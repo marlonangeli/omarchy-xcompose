@@ -26,8 +26,9 @@ What it does not do:
 
 ## Boundaries
 
-- Only regular files are read. Symlinks are resolved with `realpath`, and FIFOs,
-  devices, sockets, and symlink loops are rejected.
+- Only regular files are read. Symlinks are resolved with `realpath`; allowed-root
+  policy is checked before opening and against the opened descriptor before any
+  bytes are read. FIFOs, devices, sockets, and symlink loops are rejected.
 - A 1 MiB source cap, a 5,000-rule cap, and a 4,096-character result cap bound
   memory; history and favorites are capped at 64 KiB and 100 entries.
 - Includes are off by default, always skip `%L`/system placeholders, and are
@@ -36,10 +37,12 @@ What it does not do:
   `$XDG_DATA_HOME`, and `$TMPDIR` plus `security.allowedRoots`, unless
   `security.allowExternalPaths` is enabled. Trusted configured sources and
   `$XCOMPOSEFILE` retain their existing path behavior.
-- `@sensitive` results are masked in the UI and inserted through a `0600` file
-  under `$XDG_RUNTIME_DIR/xcompose/`, so they do not appear in process argument
-  lists. Only the selected entry can be revealed, navigation remasks it, staging
-  failures stop the operation, and the file is removed on success or failure.
+- `@sensitive` results are masked in the UI and inserted through a unique `0600`
+  file under the enforced-`0700` `$XDG_RUNTIME_DIR/xcompose/` directory, so they
+  do not appear in process argument lists. Only the selected entry can be
+  revealed, navigation remasks it, staging failures stop the operation, and the
+  file is removed on success or failure. Stale files from terminated processes
+  are removed when the staging directory is prepared again.
 - Insertion waits until `wl-paste` returns the requested bytes, not merely until
   some clipboard owner exists, before sending Shift+Insert.
 - The keybind helper edits only its marked block in

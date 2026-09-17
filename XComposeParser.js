@@ -19,8 +19,9 @@ function emptyCommentMeta() {
   return { description: "", name: "", tags: [], aliases: [], sensitive: false }
 }
 
-function sanitizeMetadataItem(value) {
-  return String(value || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().substring(0, maxMetadataItem)
+function sanitizeMetadataItem(value, limit) {
+  var text = String(value || "").replace(/[\u0000-\u001f\u007f]/g, "").trim()
+  return Array.from(text).slice(0, limit == null ? maxMetadataItem : limit).join("")
 }
 
 function splitMetadataList(value) {
@@ -62,7 +63,7 @@ function parseCommentMeta(comment, line, diagnostics) {
     var current = matches[index]
     var nextStart = index + 1 < matches.length ? matches[index + 1].start : text.length
     var value = text.substring(current.end, nextStart).replace(/^\s*:?\s*/, "").trim()
-    if (current.key === "name") meta.name = sanitizeMetadataItem(value).substring(0, maxMetadataName)
+    if (current.key === "name") meta.name = sanitizeMetadataItem(value, maxMetadataName)
     else if (current.key === "tag" || current.key === "tags") meta.tags = meta.tags.concat(splitMetadataList(value))
     else if (current.key === "alias" || current.key === "aliases") meta.aliases = meta.aliases.concat(splitMetadataList(value))
     else if (current.key === "sensitive") {
@@ -88,26 +89,28 @@ function mergeCommentMeta(base, extra) {
 }
 
 function compactPreview(value, limit) {
-  var text = String(value || "").replace(/\r\n|[\r\n\t\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]|\s+/g, function(match) {
-    if (match === "\n" || match === "\r" || match === "\r\n") return " ↵ "
-    if (match === "\t") return " ⇥ "
-    if (match === " " || match.length > 1) return " "
-    return "�"
-  }).trim()
+  var text = String(value || "")
+    .replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+    .replace(/\n/g, " ↵ ").replace(/\t/g, " ⇥ ")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "�")
+    .replace(/\s+/g, " ").trim()
   if (!text) text = "(whitespace)"
-  return text.length <= limit ? text : text.substring(0, Math.max(0, limit - 1)) + "…"
+  var characters = Array.from(text)
+  return characters.length <= limit ? text : characters.slice(0, Math.max(0, limit - 1)).join("") + "…"
+}
+
+function hash32(value, seed) {
+  var hash = seed >>> 0
+  var text = String(value || "")
+  for (var index = 0; index < text.length; index++) {
+    hash ^= text.charCodeAt(index)
+    hash = (hash + (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)) >>> 0
+  }
+  return ("00000000" + hash.toString(16)).slice(-8)
 }
 
 function opaqueId(value) {
-  var text = String(value || "")
-  var first = 5381
-  var second = 52711
-  for (var index = 0; index < text.length; index++) {
-    var code = text.charCodeAt(index)
-    first = ((first * 33) ^ code) >>> 0
-    second = ((second * 31) + code) >>> 0
-  }
-  return "x" + ("00000000" + first.toString(16)).slice(-8) + ("00000000" + second.toString(16)).slice(-8)
+  return "x" + hash32(value, 0x811c9dc5) + hash32(value, 0x9e3779b9)
 }
 
 function decodeEscapes(value, line, diagnostics) {

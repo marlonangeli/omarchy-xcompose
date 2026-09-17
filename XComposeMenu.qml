@@ -29,10 +29,13 @@ Item {
   readonly property string configPath: Quickshell.env("XCOMPOSE_PICKER_CONFIG") || configHome + "/omarchy-xcompose/config.json"
   readonly property string runtimeDir: Quickshell.env("XDG_RUNTIME_DIR") || stateDir
   readonly property string secretDir: runtimeDir + "/xcompose"
-  readonly property string secretPath: secretDir + "/pending"
+  property string secretPath: ""
+  property int secretSequence: 0
+  property bool secretDirReady: false
   property string pendingSecret: ""
   property bool pendingCopy: false
   property bool secretWritePending: false
+  property string activeSecretPath: ""
   readonly property int maxComposeBytes: XComposeParser.maxSourceBytes
   readonly property int maxStateBytes: XComposeHistory.maxStateBytes
   readonly property int maxConfigBytes: XComposeConfig.maxConfigLength
@@ -42,6 +45,9 @@ Item {
   property string composeSourceName: ""
   property string composeSourceOrigin: ""
   property string sourceError: ""
+  property string composeError: ""
+  property var includeWatchPaths: []
+  property bool includeWatchNeedsPolling: false
   property var config: XComposeConfig.empty()
   property var configDiagnostics: []
   property string configLoadState: "loading"
@@ -121,6 +127,8 @@ Item {
       composePath = ""
       entries = []
       diagnostics = []
+      includeWatchPaths = []
+      includeWatchNeedsPolling = false
       sourceError = "Unknown compose source: " + selection.name
       composeLoadState = "invalid"
       rebuildDisplay()
@@ -130,12 +138,17 @@ Item {
       composePath = selection.path
       entries = []
       diagnostics = []
+      includeWatchPaths = []
+      includeWatchNeedsPolling = false
       sourceError = "Path outside the allowed roots"
       composeLoadState = "invalid"
       rebuildDisplay()
       return
     }
     sourceError = ""
+    composeError = ""
+    includeWatchPaths = []
+    includeWatchNeedsPolling = false
     composePath = selection.path
     composeLoadState = "loading"
     readCompose()
@@ -159,17 +172,29 @@ Item {
     if (!bundle || typeof bundle !== "object" || !Array.isArray(bundle.files)) {
       entries = []
       diagnostics = [{ severity: "error", line: 0, code: "unreadable-source", message: "XCompose bundle is invalid" }]
+      composeError = "XCompose bundle is invalid"
+      includeWatchPaths = []
+      includeWatchNeedsPolling = false
       composeLoadState = "invalid"
       rebuildDisplay()
       return
     }
     var parsed = XComposeParser.parseBundle(bundle)
     entries = parsed.entries
-    diagnostics = parsed.diagnostics.concat((bundle.diagnostics || []).map(function(item) {
+    var bundleDiagnostics = (bundle.diagnostics || []).map(function(item) {
       return { severity: item.severity, line: 0, code: item.code, message: item.message }
-    }))
-    if (bundle.state === "ok" && bundle.path) composePath = bundle.path
-    composeLoadState = bundle.state === "missing" ? "missing" : (bundle.state === "ok" ? "ready" : "invalid")
+    })
+    composeError = bundle.state === "ok" ? "" : String(bundle.message || "XCompose file is unreadable")
+    if (bundle.state !== "ok" && bundle.message) {
+      var code = bundle.state === "too-large" ? "source-too-large" : (bundle.state === "missing" ? "source-missing" : "unreadable-source")
+      bundleDiagnostics.push({ severity: bundle.state === "missing" ? "warning" : "error", line: 0, code: code, message: bundle.message })
+    }
+    diagnostics = parsed.diagnostics.concat(bundleDiagnostics)
+    includeWatchPaths = bundle.state === "ok" && Array.isArray(bundle.watchPaths) ? bundle.watchPaths.filter(function(filePath) {
+      return typeof filePath === "string" && filePath.length > 0
+    }) : []
+    includeWatchNeedsPolling = bundle.state === "ok" && (bundle.watchLimitReached === true || bundleDiagnostics.some(function(item) { return item.code === "include-missing" }))
+    composeLoadState = bundle.state === "ok" ? "ready" : (bundle.state || "invalid")
     rebuildDisplay()
   }
 
@@ -219,25 +244,35 @@ Item {
     composeRead.read(composePath, maxComposeBytes, [JSON.stringify(readOptions())])
   }
 
+  function nextSecretPath() {
+    secretSequence += 1
+    return secretDir + "/pending-" + Quickshell.processId + "-" + Date.now() + "-" + secretSequence
+  }
+
   function launchPendingFromFile() {
-    if (!pendingSecret) return
+    var stagedPath = secretPath
+    if (!pendingSecret || !stagedPath) return
     var script = pendingCopy ? "/scripts/copy.sh" : "/scripts/insert.sh"
-    var command = ["bash", pluginDir + script, "--file", secretPath]
+    var command = ["bash", pluginDir + script, "--file", stagedPath]
     if (!pendingCopy) command.push("--clear", config.insert.clearClipboardAfterPaste ? "1" : "0")
+    secretPath = ""
     pendingSecret = ""
     pendingCopy = false
-    secretWritePending = false
+    activeSecretPath = stagedPath
+    secretAction.command = command
+    secretAction.running = true
     dismiss()
-    Quickshell.execDetached(command)
   }
 
   function secretWriteFailed(error) {
+    var stagedPath = secretPath
+    secretPath = ""
     pendingSecret = ""
     pendingCopy = false
     secretWritePending = false
     actionError = "Could not stage the sensitive value"
     console.error("omarchy-xcompose: sensitive staging failed: " + error)
-    Quickshell.execDetached(["rm", "-f", secretPath])
+    if (stagedPath) Quickshell.execDetached(["rm", "-f", stagedPath])
   }
   function readFavorites() { favoritesRead.read(favoritesPath, maxStateBytes) }
   function readHistory() { historyRead.read(historyPath, maxStateBytes) }
@@ -252,8 +287,21 @@ Item {
     else if (filteredGroups.length || entries.length) rebuildDisplay()
   }
 
+  function configReadFailed(exitCode) {
+    config = XComposeConfig.empty()
+    if (exitCode === 3) configDiagnostics = []
+    else if (exitCode === 5) configDiagnostics = [{ severity: "error", code: "config-too-large", message: "Configuration exceeds " + maxConfigBytes + " bytes" }]
+    else configDiagnostics = [{ severity: "error", code: "config-unreadable", message: "Configuration must be a regular file within the size limit" }]
+    configLoadState = exitCode === 3 ? "defaults" : "ready"
+    if (opened) applyOpen()
+    else if (filteredGroups.length || entries.length) rebuildDisplay()
+  }
+
   function composeReadFailed(exitCode) {
     composeLoadState = exitCode === 3 ? "missing" : "invalid"
+    composeError = exitCode === 3 ? "" : "XCompose path must be a regular file within the size limit"
+    includeWatchPaths = []
+    includeWatchNeedsPolling = false
     entries = []
     diagnostics = exitCode === 3 ? [] : [{ severity: "error", line: 0, code: "unreadable-source", message: "XCompose path must be a regular file within the size limit" }]
     rebuildDisplay()
@@ -265,6 +313,8 @@ Item {
 
   function warningCount() { return diagnostics.filter(function(item) { return item.severity === "warning" }).length }
   function errorCount() { return diagnostics.filter(function(item) { return item.severity === "error" }).length }
+  function conflictCount() { return diagnostics.filter(function(item) { return item.severity === "error" && item.code === "conflicting-sequence" }).length }
+  function diagnosticErrorCount() { return errorCount() - conflictCount() }
   function configErrorCount() { return configDiagnostics.filter(function(item) { return item.severity === "error" }).length }
   function configWarningCount() { return configDiagnostics.filter(function(item) { return item.severity === "warning" }).length }
   function sourceName() { return composeSourceOrigin === "default" || !composeSourceName ? "default" : composeSourceName }
@@ -360,8 +410,9 @@ Item {
     if (configErrorCount()) parts.push(configErrorCount() + " config error" + (configErrorCount() === 1 ? "" : "s"))
     else if (configWarningCount()) parts.push(configWarningCount() + " config warning" + (configWarningCount() === 1 ? "" : "s"))
     if (config.ui.maskSensitive && selectedSensitive()) parts.push(revealedSensitiveId ? "Ctrl+R hide" : "Ctrl+R reveal")
-    if (errorCount()) parts.push(errorCount() + " conflict" + (errorCount() === 1 ? "" : "s"))
-    else if (warningCount()) parts.push(warningCount() + " rule warning" + (warningCount() === 1 ? "" : "s"))
+    if (conflictCount()) parts.push(conflictCount() + " conflict" + (conflictCount() === 1 ? "" : "s"))
+    if (diagnosticErrorCount()) parts.push(diagnosticErrorCount() + " diagnostic error" + (diagnosticErrorCount() === 1 ? "" : "s"))
+    if (warningCount()) parts.push(warningCount() + " rule warning" + (warningCount() === 1 ? "" : "s"))
     return parts.join("  •  ")
   }
 
@@ -379,6 +430,8 @@ Item {
     if (sourceError) return sourceError
     if (configErrorCount()) return "Configuration error"
     if (composeLoadState === "missing") return "XCompose file not found"
+    if (composeLoadState === "too-large") return "XCompose file is too large"
+    if (composeLoadState === "invalid") return "Could not load XCompose file"
     if (entries.length) return "No matching shortcuts"
     return "No valid XCompose entries"
   }
@@ -387,6 +440,7 @@ Item {
     if (sourceError) return "Define it in " + configPath
     if (configErrorCount()) return firstDiagnosticMessage(configDiagnostics) + "  •  " + configPath
     if (composeLoadState === "missing") return "Create " + composePath + " or set XCOMPOSEFILE"
+    if (composeError) return composeError + "  •  " + composePath
     return composePath
   }
 
@@ -463,13 +517,18 @@ Item {
     var variant = selectedVariant(index)
     if (!variant || !variant.result) return
     actionError = ""
+    if (variant.sensitive && !secretDirReady) {
+      actionError = "Sensitive staging is unavailable"
+      return
+    }
     history = XComposeHistory.record(history, variant.id, Date.now(), 100)
     saveHistory()
     if (variant.sensitive) {
+      secretPath = nextSecretPath()
       pendingSecret = variant.result
       pendingCopy = copyOnly
       secretWritePending = true
-      secretFile.setText(variant.result)
+      Qt.callLater(function() { if (secretWritePending) secretFile.setText(pendingSecret) })
       return
     }
     dismiss()
@@ -487,6 +546,20 @@ Item {
     path: root.composePath
     printErrors: false
     onFileChanged: root.readCompose()
+  }
+
+  Variants {
+    model: root.includeWatchPaths
+    delegate: FileView {
+      required property string modelData
+      blockLoading: true
+      blockAllReads: true
+      preload: false
+      watchChanges: true
+      path: modelData
+      printErrors: false
+      onFileChanged: root.readCompose()
+    }
   }
 
   FileView {
@@ -531,7 +604,7 @@ Item {
     preload: false
     printErrors: false
     path: root.secretPath
-    atomicWrites: true
+    atomicWrites: false
     onSaved: root.launchPendingFromFile()
     onSaveFailed: function(error) { root.secretWriteFailed(error) }
   }
@@ -561,7 +634,29 @@ Item {
     id: configRead
     scriptPath: root.pluginDir + "/scripts/read-bounded.js"
     onLoaded: function(text) { root.loadConfig(text) }
-    onFailed: function(exitCode) { root.loadConfig("") }
+    onFailed: function(exitCode) { root.configReadFailed(exitCode) }
+  }
+
+  Process {
+    id: secretDirSetup
+    running: true
+    command: ["node", root.pluginDir + "/scripts/prepare-secret-dir.js", root.secretDir]
+    onExited: function(exitCode) {
+      root.secretDirReady = exitCode === 0
+      if (exitCode !== 0) console.error("omarchy-xcompose: sensitive directory setup failed")
+    }
+  }
+
+  Process {
+    id: secretAction
+    running: false
+    onExited: function(exitCode) {
+      var stagedPath = root.activeSecretPath
+      root.activeSecretPath = ""
+      root.secretWritePending = false
+      if (exitCode !== 0) root.actionError = "Sensitive action failed"
+      if (stagedPath) Quickshell.execDetached(["rm", "-f", stagedPath])
+    }
   }
 
   Timer {
@@ -571,9 +666,15 @@ Item {
     onTriggered: root.readCompose()
   }
 
+  Timer {
+    interval: 1000
+    repeat: true
+    running: root.opened && root.includeWatchNeedsPolling
+    onTriggered: root.readCompose()
+  }
+
   Component.onCompleted: {
     Quickshell.execDetached(["mkdir", "-p", stateDir])
-    Quickshell.execDetached(["mkdir", "-p", "-m", "700", secretDir])
     Qt.callLater(function() { root.readConfig(); root.readFavorites(); root.readHistory() })
   }
 

@@ -43,10 +43,10 @@ exactly where.
 
 ## Optimization history
 
-- `opaqueId` replaced `Math.imul` with two bitwise accumulators: ~10x faster on
-  the Quickshell runtime (`parse 1k` went from ~30 ms to ~19 ms).
+- `opaqueId` uses shift-add FNV multiplication while retaining the stable IDs
+  used by persisted favorites and history.
 - `normalize` gained an ASCII fast path: entries without accents skip
   `String.normalize`.
-- `compactPreview` runs a single regex pass with a callback.
+- `compactPreview` preserves visible newline and tab markers in mixed whitespace.
 - `search()` returns the match ranges of the active variant, avoiding a second
   matching pass per visible row.

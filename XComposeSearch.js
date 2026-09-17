@@ -123,6 +123,7 @@ function matchHeuristics(entry, query, options) {
     { value: entry.normalizedValuePreview || normalize(entry.valuePreview || entry.result), weight: 50, target: "result" },
     { value: entry.normalizedAliases || "", weight: 47, target: "none" },
     { value: entry.normalizedDescriptionPreview || normalize(entry.descriptionPreview || entry.description), weight: 45, target: "description" },
+    { value: entry.normalizedDescription || normalize(entry.description), weight: 45, target: "none" },
     { value: entry.normalizedTags || "", weight: 35, target: "none" },
     { value: rawSequence.value, weight: 30, target: "sequence", tokenIndexes: rawSequence.tokenIndexes },
     { value: compactSequence.value, weight: 25, target: "sequence", tokenIndexes: compactSequence.tokenIndexes },

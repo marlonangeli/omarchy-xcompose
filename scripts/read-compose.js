@@ -13,15 +13,31 @@ let options = {}
 try { options = JSON.parse(process.argv[4] || "{}") } catch (_) { options = {} }
 const includes = options.includes && typeof options.includes === "object" ? options.includes : {}
 const includeEnabled = includes.enabled === true
-const includeRoots = Array.isArray(includes.roots) ? includes.roots.map(function(root) { return path.resolve(root) }) : []
+const configuredIncludeRoots = Array.isArray(includes.roots) ? includes.roots.filter(function(root) { return typeof root === "string" && root.length > 0 }) : []
+const includeRoots = configuredIncludeRoots.length
+  ? configuredIncludeRoots.map(canonicalRoot)
+  : includeEnabled && process.env.HOME ? [canonicalRoot(process.env.HOME)] : []
 const security = options.security && typeof options.security === "object" ? options.security : {}
 const restrictRoot = security.restrictRoot === true
 const allowExternalPaths = security.allowExternalPaths === true
-const allowedRoots = Array.isArray(security.allowedRoots) ? security.allowedRoots.map(function(root) { return path.resolve(root) }) : []
+const allowedRoots = Array.isArray(security.allowedRoots) ? security.allowedRoots.filter(function(root) { return typeof root === "string" && root.length > 0 }).map(function(root) { return path.resolve(root) }) : []
 
-function underRoots(target, roots) {
-  if (!roots.length) return true
-  return roots.some(function(root) { return target === root || target.indexOf(root + path.sep) === 0 })
+function canonicalRoot(root) {
+  try { return fs.realpathSync(root) } catch (_) { return path.resolve(root) }
+}
+
+function watchPathAllowed(target, roots) {
+  try {
+    return readSafe.underRoots(fs.realpathSync(target), roots)
+  } catch (error) {
+    if (!error || error.code !== "ENOENT") return false
+    try {
+      const parent = fs.realpathSync(path.dirname(target))
+      return readSafe.underRoots(path.join(parent, path.basename(target)), roots)
+    } catch (_) {
+      return false
+    }
+  }
 }
 
 function parseIncludeLine(line) {
@@ -57,56 +73,89 @@ function main() {
     process.exit(2)
   }
 
-  const bundle = { state: "ok", path: rootPath, message: "", files: [], diagnostics: [] }
+  const bundle = { state: "ok", path: rootPath, message: "", files: [], watchPaths: [], watchLimitReached: false, diagnostics: [] }
   const visited = new Set()
+  const watched = new Set()
   let totalBytes = 0
+  let limitReported = false
+  let watchLimitReported = false
+
+  function reportLimit() {
+    if (limitReported) return
+    limitReported = true
+    bundle.diagnostics.push({ severity: "error", code: "include-limit", message: `Stopped after ${maxFiles} compose files` })
+  }
+
+  function addWatchPath(requestedPath, roots) {
+    if (requestedPath === path.resolve(rootPath) || requestedPath === bundle.path || watched.has(requestedPath)) return true
+    if (!watchPathAllowed(requestedPath, roots)) return true
+    if (bundle.watchPaths.length >= maxFiles - 1) {
+      bundle.watchLimitReached = true
+      if (!watchLimitReported) {
+        watchLimitReported = true
+        bundle.diagnostics.push({ severity: "warning", code: "include-watch-limit", message: `Watching at most ${maxFiles - 1} include paths; polling for additional changes` })
+      }
+      return true
+    }
+    watched.add(requestedPath)
+    bundle.watchPaths.push(requestedPath)
+    return true
+  }
 
   function visit(target, isRoot, sourceLine) {
-    let resolved
+    const roots = isRoot
+      ? (restrictRoot && !allowExternalPaths ? allowedRoots : null)
+      : includeRoots
+    const requestedPath = path.resolve(target)
+    if (!isRoot) addWatchPath(requestedPath, roots)
+
+    // This early cycle check is only an optimization. The descriptor-derived
+    // path is checked again below before any bytes are read.
     try {
-      resolved = fs.realpathSync(target)
-    } catch (error) {
-      if (isRoot) {
-        bundle.state = error && error.code === "ENOENT" ? "missing" : "invalid"
-        bundle.message = error && error.message ? error.message : "unable to read XCompose file"
+      const candidate = fs.realpathSync(target)
+      if (visited.has(candidate)) {
+        if (!isRoot) bundle.diagnostics.push({ severity: "warning", code: "include-cycle", message: `Skipped cyclic include on line ${sourceLine}: ${candidate}` })
         return
       }
-      bundle.diagnostics.push({ severity: "warning", code: "include-missing", message: `Included file is unavailable: ${target}` })
-      return
-    }
-
-    if (isRoot && restrictRoot && !allowExternalPaths && !underRoots(resolved, allowedRoots)) {
-      bundle.state = "invalid"
-      bundle.message = `XCompose path is outside the allowed roots: ${resolved}`
-      return
-    }
-
-    if (!isRoot && !underRoots(resolved, includeRoots)) {
-      bundle.diagnostics.push({ severity: "warning", code: "include-denied", message: `Included file is outside the configured roots: ${resolved}` })
-      return
-    }
-
-    if (visited.has(resolved)) {
-      if (!isRoot) bundle.diagnostics.push({ severity: "warning", code: "include-cycle", message: `Skipped cyclic include on line ${sourceLine}: ${resolved}` })
-      return
-    }
+    } catch (_) {}
 
     if (bundle.files.length >= maxFiles) {
-      bundle.diagnostics.push({ severity: "error", code: "include-limit", message: `Stopped after ${maxFiles} compose files` })
+      reportLimit()
       return
     }
 
-    let text
+    let opened
     try {
-      text = readSafe.readBounded(resolved, limit - totalBytes)
+      opened = readSafe.withBoundedFile(target, limit - totalBytes, roots === null ? null : { roots: roots }, function(file) {
+        if (visited.has(file.path)) return { path: file.path, cycle: true, text: "" }
+        return { path: file.path, cycle: false, text: file.read() }
+      })
     } catch (error) {
+      if (error && error.exitCode === 6) {
+        if (isRoot) {
+          bundle.state = "invalid"
+          bundle.message = `XCompose ${error.message}`
+        } else {
+          bundle.diagnostics.push({ severity: "warning", code: "include-denied", message: `Included file ${error.message}` })
+        }
+        return
+      }
       if (isRoot) {
-        bundle.state = error.exitCode === 5 ? "too-large" : "invalid"
+        bundle.state = error && error.exitCode === 3 ? "missing" : (error && error.exitCode === 5 ? "too-large" : "invalid")
         bundle.message = error && error.message ? error.message : "unable to read XCompose file"
         return
       }
-      const severity = error.exitCode === 5 ? "error" : "warning"
-      bundle.diagnostics.push({ severity: severity, code: "include-unreadable", message: `${resolved}: ${error && error.message ? error.message : "unable to read included file"}` })
+      const severity = error && error.exitCode === 5 ? "error" : "warning"
+      const code = error && error.exitCode === 3 ? "include-missing" : "include-unreadable"
+      bundle.diagnostics.push({ severity: severity, code: code, message: `${target}: ${error && error.message ? error.message : "unable to read included file"}` })
+      return
+    }
+
+    const resolved = opened.path
+    const text = opened.text
+
+    if (opened.cycle) {
+      if (!isRoot) bundle.diagnostics.push({ severity: "warning", code: "include-cycle", message: `Skipped cyclic include on line ${sourceLine}: ${resolved}` })
       return
     }
 

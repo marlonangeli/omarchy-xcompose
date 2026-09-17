@@ -25,6 +25,8 @@ EOF
 chmod +x "$test_root/bin/wl-copy" "$test_root/bin/wl-paste" "$test_root/bin/wtype"
 ln -s /usr/bin/rm "$test_root/bin/rm"
 ln -s /usr/bin/chmod "$test_root/bin/chmod"
+ln -s /usr/bin/readlink "$test_root/bin/readlink"
+ln -s /usr/bin/realpath "$test_root/bin/realpath"
 
 TEST_COPY_ARGS="$test_root/args" TEST_COPY_VALUE="$test_root/value" TEST_WTYPE_ARGS="$test_root/wtype" PATH="$test_root/bin:$PATH" \
   /usr/bin/bash "$project_dir/scripts/insert.sh" 'line one
@@ -45,6 +47,30 @@ printf '%s' 'secret from file' >"$test_root/expected-file"
 cmp "$test_root/expected-file" "$test_root/value-file"
 grep -Fx -- '-M shift -k Insert -m shift' "$test_root/wtype-file"
 [[ ! -e "$secret" ]] || { printf 'insert did not remove the secret file\n' >&2; exit 1; }
+
+target="$test_root/symlink-target"
+link="$test_root/symlink-secret"
+printf '%s' 'must remain untouched' >"$target"
+chmod 644 "$target"
+ln -s "$target" "$link"
+rm -f "$test_root/args-symlink" "$test_root/value-symlink" "$test_root/wtype-symlink"
+if TEST_COPY_ARGS="$test_root/args-symlink" TEST_COPY_VALUE="$test_root/value-symlink" TEST_WTYPE_ARGS="$test_root/wtype-symlink" PATH="$test_root/bin:$PATH" \
+  /usr/bin/bash "$project_dir/scripts/insert.sh" --file "$link" >/dev/null 2>&1; then
+  printf 'insert should reject a symlink source file\n' >&2
+  exit 1
+fi
+[[ -L "$link" && "$(stat -c %a "$target")" == "644" ]] || { printf 'insert modified the symlink target\n' >&2; exit 1; }
+[[ "$(cat "$target")" == 'must remain untouched' && ! -e "$test_root/args-symlink" && ! -e "$test_root/wtype-symlink" ]] || { printf 'insert read the symlink target\n' >&2; exit 1; }
+
+mkdir "$test_root/actual-dir"
+printf '%s' 'parent link target' >"$test_root/actual-dir/secret"
+ln -s "$test_root/actual-dir" "$test_root/link-dir"
+if TEST_COPY_ARGS="$test_root/args-parent-link" TEST_COPY_VALUE="$test_root/value-parent-link" TEST_WTYPE_ARGS="$test_root/wtype-parent-link" PATH="$test_root/bin:$PATH" \
+  /usr/bin/bash "$project_dir/scripts/insert.sh" --file "$test_root/link-dir/secret" >/dev/null 2>&1; then
+  printf 'insert should reject symlink path components\n' >&2
+  exit 1
+fi
+[[ "$(cat "$test_root/actual-dir/secret")" == 'parent link target' && ! -e "$test_root/args-parent-link" && ! -e "$test_root/wtype-parent-link" ]] || { printf 'insert read a parent symlink target\n' >&2; exit 1; }
 
 TEST_COPY_ARGS="$test_root/args-option" TEST_COPY_VALUE="$test_root/value-option" TEST_WTYPE_ARGS="$test_root/wtype-option" PATH="$test_root/bin:$PATH" \
   /usr/bin/bash "$project_dir/scripts/insert.sh" -- --clear
