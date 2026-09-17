@@ -12,6 +12,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-tag
+  cancel-in-progress: false
+
 jobs:
   tag:
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
@@ -22,20 +26,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.workflow_run.head_sha }}
 
-      - name: Check for a version change
-        id: release
-        shell: bash
-        env:
-          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          if git diff --quiet "$TARGET_SHA^" "$TARGET_SHA" -- manifest.json; then
-            echo "changed=false" >>"$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >>"$GITHUB_OUTPUT"
-          fi
-
       - name: Read manifest version
-        if: steps.release.outputs.changed == 'true'
         id: manifest
         shell: bash
         run: |
@@ -51,10 +42,23 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\ntag=v${version}\n`)
           NODE
 
-      - name: Create version tag
-        if: steps.release.outputs.changed == 'true'
+      - name: Detect manifest change
+        id: release
         shell: bash
         env:
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if git diff --quiet "$TARGET_SHA^" "$TARGET_SHA" -- manifest.json; then
+            echo "changed=false" >>"$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Create version tag
+        id: tag
+        shell: bash
+        env:
+          CHANGED: ${{ steps.release.outputs.changed }}
           TAG: ${{ steps.manifest.outputs.tag }}
           TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
           VERSION: ${{ steps.manifest.outputs.version }}
@@ -79,12 +83,19 @@ jobs:
 
           existing_commit="$(remote_tag_commit)"
           if [[ -n "$existing_commit" ]]; then
-            if [[ "$existing_commit" == "$TARGET_SHA" ]]; then
-              echo "$TAG already points to $TARGET_SHA; nothing to do"
-              exit 0
+            if [[ "$existing_commit" != "$TARGET_SHA" && "$CHANGED" == "true" ]]; then
+              echo "$TAG points to $existing_commit, expected $TARGET_SHA" >&2
+              exit 1
             fi
-            echo "$TAG points to $existing_commit, expected $TARGET_SHA" >&2
-            exit 1
+            echo "$TAG already exists for $existing_commit"
+            echo "tag_exists=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$CHANGED" != "true" ]]; then
+            echo "manifest.json did not change in $TARGET_SHA; no tag to create"
+            echo "tag_exists=false" >>"$GITHUB_OUTPUT"
+            exit 0
           fi
 
           git config user.name "github-actions[bot]"
@@ -92,7 +103,34 @@ jobs:
           git tag -a "$TAG" -m "Release $VERSION"
 
           if git push origin "refs/tags/$TAG"; then
+            echo "tag_exists=true" >>"$GITHUB_OUTPUT"
             exit 0
           fi
 
+          # Treat a concurrent workflow creating the same tag as success.
           [[ "$(remote_tag_commit)" == "$TARGET_SHA" ]]
+          echo "tag_exists=true" >>"$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        if: steps.tag.outputs.tag_exists == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.manifest.outputs.tag }}
+        run: |
+          if draft="$(gh release view "$TAG" --json isDraft --jq '.isDraft' 2>/dev/null)"; then
+            if [[ "$draft" == "true" ]]; then
+              gh release edit "$TAG" --draft=false
+              echo "Published draft release $TAG"
+            else
+              echo "Release $TAG already exists; nothing to do"
+            fi
+            exit 0
+          fi
+
+          if gh release create "$TAG" --title "$TAG" --generate-notes; then
+            exit 0
+          fi
+
+          # Treat a concurrent workflow publishing the same release as success.
+          gh release view "$TAG" >/dev/null 2>&1

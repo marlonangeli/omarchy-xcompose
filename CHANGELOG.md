@@ -2,6 +2,7 @@
 
 ## 0.3.2
 
+- Publish a GitHub release from the version tag after CI succeeds on `main`, and publish missing releases for existing version tags.
 - Hide the header source badge by default; enable it with `ui.showSourceBadge`.
 
 ## 0.3.1
