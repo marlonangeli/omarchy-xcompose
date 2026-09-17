@@ -11,7 +11,7 @@ function empty() {
     compose: { path: "", sources: [] },
     includes: { enabled: false, roots: [] },
     search: { fuzzy: true, maxResults: defaultResults },
-    ui: { showTags: true, showSource: true, maskSensitive: true },
+    ui: { showTags: true, showSource: true, showSourceBadge: false, maskSensitive: true },
     insert: { clearClipboardAfterPaste: true },
     security: { allowExternalPaths: false, allowedRoots: [] }
   }
@@ -186,9 +186,10 @@ function parse(raw) {
   config.search.maxResults = readInt(search, "search", "maxResults", config.search.maxResults, 1, maxResultsLimit, diagnostics)
 
   var ui = readSection(value, "ui", diagnostics)
-  warnUnknownKeys(ui, "ui", ["showTags", "showSource", "maskSensitive"], diagnostics)
+  warnUnknownKeys(ui, "ui", ["showTags", "showSource", "showSourceBadge", "maskSensitive"], diagnostics)
   config.ui.showTags = readBool(ui, "ui", "showTags", config.ui.showTags, diagnostics)
   config.ui.showSource = readBool(ui, "ui", "showSource", config.ui.showSource, diagnostics)
+  config.ui.showSourceBadge = readBool(ui, "ui", "showSourceBadge", config.ui.showSourceBadge, diagnostics)
   config.ui.maskSensitive = readBool(ui, "ui", "maskSensitive", config.ui.maskSensitive, diagnostics)
 
   var insert = readSection(value, "insert", diagnostics)

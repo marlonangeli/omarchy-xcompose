@@ -759,7 +759,7 @@ Item {
             id: sourceBadge
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            visible: root.composeSourceOrigin !== "default" && root.composeSourceOrigin !== ""
+            visible: root.config.ui.showSourceBadge && root.composeSourceOrigin !== "default" && root.composeSourceOrigin !== ""
             text: root.sourceName()
             textFormat: Text.PlainText
             color: root.foreground

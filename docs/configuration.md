@@ -32,7 +32,7 @@ problem shows in the diagnostics pane (`Ctrl+D`) and the defaults stay active.
     "roots": ["~/.config/xcompose"]
   },
   "search": { "fuzzy": true, "maxResults": 100 },
-  "ui": { "showTags": true, "showSource": true, "maskSensitive": true },
+  "ui": { "showTags": true, "showSource": true, "showSourceBadge": false, "maskSensitive": true },
   "insert": { "clearClipboardAfterPaste": true },
   "security": { "allowExternalPaths": false, "allowedRoots": [] }
 }
@@ -48,6 +48,7 @@ problem shows in the diagnostics pane (`Ctrl+D`) and the defaults stay active.
 | `search.maxResults` | `100` | Rendered groups, 1–500 |
 | `ui.showTags` | `true` | Show `#tags` in the result row |
 | `ui.showSource` | `true` | Show the source file in the preview pane |
+| `ui.showSourceBadge` | `false` | Show the selected source name in the header; Omarchy sets `XCOMPOSEFILE`, so this usually reads `environment` |
 | `ui.maskSensitive` | `true` | Mask `@sensitive` results in the list and preview |
 | `insert.clearClipboardAfterPaste` | `true` | Drop the clipboard right after paste |
 | `security.allowExternalPaths` | `false` | Allow `{"path": ...}` outside the default roots |

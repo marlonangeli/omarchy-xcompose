@@ -27,6 +27,7 @@ assert.equal(defaults.config.includes.enabled, false)
 assert.equal(defaults.config.search.fuzzy, true)
 assert.equal(defaults.config.search.maxResults, config.defaultResults)
 assert.equal(defaults.config.ui.maskSensitive, true)
+assert.equal(defaults.config.ui.showSourceBadge, false)
 assert.equal(defaults.config.security.allowExternalPaths, false)
 
 const full = config.parse(JSON.stringify({
@@ -34,7 +35,7 @@ const full = config.parse(JSON.stringify({
   compose: { path: "~/custom/.XCompose", sources: [{ name: "work", path: "~/work/.XCompose" }] },
   includes: { enabled: true, roots: ["~/work"] },
   search: { fuzzy: false, maxResults: 50 },
-  ui: { showTags: false, showSource: false, maskSensitive: false },
+  ui: { showTags: false, showSource: false, showSourceBadge: true, maskSensitive: false },
   insert: { clearClipboardAfterPaste: false },
   security: { allowExternalPaths: true, allowedRoots: ["/srv/compose"] }
 }))
@@ -45,6 +46,7 @@ assert.equal(full.config.includes.roots[0], "~/work")
 assert.equal(full.config.search.fuzzy, false)
 assert.equal(full.config.search.maxResults, 50)
 assert.equal(full.config.ui.maskSensitive, false)
+assert.equal(full.config.ui.showSourceBadge, true)
 assert.equal(full.config.insert.clearClipboardAfterPaste, false)
 assert.equal(full.config.security.allowedRoots[0], "/srv/compose")
 
@@ -61,6 +63,7 @@ assert.ok(config.parse('{"search":{"maxResults":"a"}}').diagnostics.some(item =>
 assert.ok(config.parse('{"search":{"maxResults":0}}').diagnostics.some(item => item.code === "config-range"))
 assert.ok(config.parse('{"search":{"maxResults":501}}').diagnostics.some(item => item.code === "config-range"))
 assert.ok(config.parse('{"ui":{"showTags":"yes"}}').diagnostics.some(item => item.code === "config-type"))
+assert.ok(config.parse('{"ui":{"showSourceBadge":"yes"}}').diagnostics.some(item => item.code === "config-type"))
 assert.ok(config.parse('{"compose":{"sources":[{"name":"a"}]}}').diagnostics.some(item => item.code === "config-source"))
 assert.ok(config.parse('{"compose":{"sources":[{"name":"a","path":"x"},{"name":"a","path":"y"}]}}').diagnostics.some(item => item.code === "config-source"))
 assert.equal(config.parse("x".repeat(config.maxConfigLength + 1)).diagnostics[0].code, "config-too-large")
